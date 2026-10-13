@@ -50,7 +50,7 @@ const SHAPE_TOOLS: DrawTool[] = [
   'sphere-3d',
 ];
 
-export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
+export const AnnotationCanvas = React.memo<AnnotationCanvasProps>(({
   width,
   height,
   activeTool,
@@ -82,6 +82,12 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   const [hoveredStrokeId, setHoveredStrokeId] = useState<string | null>(null);
   const [livePreviewStroke, setLivePreviewStroke] = useState<DrawStroke | null>(null);
 
+  // Local drag/resize state: cập nhật mượt mà 120 FPS qua requestAnimationFrame
+  // mà KHÔNG kích hoạt App.tsx re-render liên tục trên mỗi pixel di chuột!
+  const [localModifiedStrokes, setLocalModifiedStrokes] = useState<DrawStroke[] | null>(null);
+  const localModifiedRef = useRef<DrawStroke[] | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+
   const selectedId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId;
 
   const setSelectedId = useCallback(
@@ -92,7 +98,8 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     [onSelectStroke]
   );
 
-  const selectedStroke = strokes.find((s) => s.id === selectedId) || null;
+  const displayStrokes = localModifiedStrokes || strokes;
+  const selectedStroke = displayStrokes.find((s) => s.id === selectedId) || null;
 
   // Tính Bounding Box của một nét vẽ bất kỳ
   const getStrokeBoundingBox = useCallback((s: DrawStroke): BoundingBox => {
@@ -671,7 +678,19 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     ctx.restore();
   };
 
-  // Re-render Canvas chính
+  // 1. Chỉ thay đổi kích thước buffer GPU khi width hoặc height thực sự thay đổi (tránh huỷ/tạo buffer liên tục)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || width <= 0 || height <= 0) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+  }, [width, height]);
+
+  // 2. Redraw nhanh chỉ dùng clearRect (cực mượt, 120 FPS, không tạo GPU garbage)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || width <= 0 || height <= 0) return;
@@ -680,11 +699,6 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
@@ -692,14 +706,23 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       drawGridLines(ctx);
     }
 
-    // Vẽ danh sách nét đã lưu
-    strokes.forEach((s) => renderStroke(ctx, s));
+    // Vẽ danh sách nét đã lưu / đang kéo
+    displayStrokes.forEach((s) => renderStroke(ctx, s));
 
-    // Vẽ nét preview
+    // Vẽ nét preview khi đang vẽ nét mới
     if (livePreviewStroke) {
       renderStroke(ctx, livePreviewStroke);
     }
-  }, [width, height, strokes, livePreviewStroke, renderStroke, showGrid]);
+  }, [width, height, displayStrokes, livePreviewStroke, renderStroke, showGrid]);
+
+  // Dọn dẹp RAF khi unmount
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
 
   // Phím tắt bàn phím: Delete / Backspace / Esc
   useEffect(() => {
@@ -864,7 +887,8 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       const dy = pt.y - dragStartPointRef.current.y;
       dragStartPointRef.current = pt;
 
-      const updatedStrokes = strokes.map((s) => {
+      const baseList = localModifiedRef.current || strokes;
+      const updatedStrokes = baseList.map((s) => {
         if (s.id === selectedId) {
           return {
             ...s,
@@ -873,7 +897,14 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         }
         return s;
       });
-      onStrokesChange(updatedStrokes);
+      localModifiedRef.current = updatedStrokes;
+
+      if (!rafIdRef.current) {
+        rafIdRef.current = requestAnimationFrame(() => {
+          rafIdRef.current = null;
+          setLocalModifiedStrokes(localModifiedRef.current);
+        });
+      }
       return;
     }
 
@@ -898,7 +929,8 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       const newW = maxX - minX;
       const newH = maxY - minY;
 
-      const updatedStrokes = strokes.map((s) => {
+      const baseList = strokes;
+      const updatedStrokes = baseList.map((s) => {
         if (s.id === selectedId) {
           return {
             ...s,
@@ -910,7 +942,14 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         }
         return s;
       });
-      onStrokesChange(updatedStrokes);
+      localModifiedRef.current = updatedStrokes;
+
+      if (!rafIdRef.current) {
+        rafIdRef.current = requestAnimationFrame(() => {
+          rafIdRef.current = null;
+          setLocalModifiedStrokes(localModifiedRef.current);
+        });
+      }
       return;
     }
 
@@ -956,6 +995,15 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       activeResizeHandleRef.current = null;
       resizeInitialBoxRef.current = null;
       resizeInitialStrokeRef.current = null;
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      if (localModifiedRef.current) {
+        onStrokesChange(localModifiedRef.current);
+        localModifiedRef.current = null;
+        setLocalModifiedStrokes(null);
+      }
       try {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       } catch {
@@ -966,6 +1014,15 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
 
     if (isDraggingSelectionRef.current) {
       isDraggingSelectionRef.current = false;
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      if (localModifiedRef.current) {
+        onStrokesChange(localModifiedRef.current);
+        localModifiedRef.current = null;
+        setLocalModifiedStrokes(null);
+      }
       try {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       } catch {
@@ -1026,6 +1083,15 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     activeResizeHandleRef.current = null;
     resizeInitialBoxRef.current = null;
     resizeInitialStrokeRef.current = null;
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    if (localModifiedRef.current) {
+      onStrokesChange(localModifiedRef.current);
+      localModifiedRef.current = null;
+      setLocalModifiedStrokes(null);
+    }
     try {
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -1076,9 +1142,9 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   if (activeTool === 'math-text') cursorClass = 'is-text-mode';
   if (activeTool === 'pen' || activeTool === 'highlighter') cursorClass = 'pointer-pen';
 
-  // Tính vị trí Bounding Box và Floating Toolbar
+  // Tính vị trí Bounding Box và Floating Toolbar (ẩn khi đang kéo để giữ mượt)
   const selectedBox = selectedStroke ? getStrokeBoundingBox(selectedStroke) : null;
-  const showFloatingBar = selectedStroke && !isDrawingRef.current && selectedBox;
+  const showFloatingBar = selectedStroke && !isDrawingRef.current && !isDraggingSelectionRef.current && !isResizingRef.current && selectedBox;
 
   return (
     <div
@@ -1243,4 +1309,4 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       )}
     </div>
   );
-};
+});

@@ -444,12 +444,11 @@ export const App: React.FC = () => {
   }, []);
 
   // 14. Thao tác Nét vẽ & Annotation Toán
-  const handlePageStrokesChange = (newStrokes: DrawStroke[]) => {
+  const handlePageStrokesChange = useCallback((newStrokes: DrawStroke[]) => {
     if (!currentPageKey) return;
-    const prev = pageStrokesMap[currentPageKey] || [];
     setUndoStackMap((prevMap) => ({
       ...prevMap,
-      [currentPageKey]: [...(prevMap[currentPageKey] || []), prev],
+      [currentPageKey]: [...(prevMap[currentPageKey] || []), pageStrokesMap[currentPageKey] || []],
     }));
     setRedoStackMap((prevMap) => ({
       ...prevMap,
@@ -459,7 +458,7 @@ export const App: React.FC = () => {
       ...prevMap,
       [currentPageKey]: newStrokes,
     }));
-  };
+  }, [currentPageKey, pageStrokesMap]);
 
   const handleEditMathFormula = (stroke: DrawStroke) => {
     setEditingStroke(stroke);
