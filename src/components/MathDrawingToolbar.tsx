@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   MousePointer,
   PenTool,
@@ -23,6 +24,7 @@ import {
   Cylinder,
   Globe,
   Shapes,
+  X,
 } from 'lucide-react';
 import type { DrawTool } from '../types/document';
 
@@ -95,8 +97,80 @@ export const MathDrawingToolbar: React.FC<MathDrawingToolbarProps> = ({
   onOpenMathFormulaModal,
 }) => {
   const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    return typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
+  });
+  const shapeContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isShapeMenuOpen || isMobile) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (shapeContainerRef.current && !shapeContainerRef.current.contains(e.target as Node)) {
+        setIsShapeMenuOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', handleClickOutside);
+    return () => window.removeEventListener('pointerdown', handleClickOutside);
+  }, [isShapeMenuOpen, isMobile]);
 
   const currentShape = ALL_MATH_SHAPES.find((s) => s.tool === activeTool);
+
+  const renderShapeItems = () => (
+    <>
+      <div className="shape-dropdown-section">
+        <div className="dropdown-menu-header">📐 Hình Học Phẳng (2D)</div>
+        <div className="shape-items-grid">
+          {MATH_SHAPES_2D.map((shape) => (
+            <button
+              key={shape.tool}
+              type="button"
+              className={`shape-item-btn ${activeTool === shape.tool ? 'is-selected' : ''}`}
+              onClick={() => {
+                onSelectTool(shape.tool);
+                setIsShapeMenuOpen(false);
+              }}
+            >
+              <span className="shape-icon-box">{shape.icon}</span>
+              <span className="shape-label-text">{shape.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="shape-dropdown-divider" />
+
+      <div className="shape-dropdown-section">
+        <div className="dropdown-menu-header flex items-center justify-between">
+          <span>📦 Hình Học Không Gian (3D)</span>
+          <span className="badge-3d-tag">SGK Chuẩn</span>
+        </div>
+        <div className="shape-items-grid">
+          {MATH_SHAPES_3D.map((shape) => (
+            <button
+              key={shape.tool}
+              type="button"
+              className={`shape-item-btn shape-3d-btn ${activeTool === shape.tool ? 'is-selected' : ''}`}
+              onClick={() => {
+                onSelectTool(shape.tool);
+                setIsShapeMenuOpen(false);
+              }}
+            >
+              <span className="shape-icon-box">{shape.icon}</span>
+              <span className="shape-label-text">{shape.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <aside className="math-drawing-floating-bar glass-panel" aria-label="Thanh công cụ vẽ Toán">
@@ -133,7 +207,7 @@ export const MathDrawingToolbar: React.FC<MathDrawingToolbarProps> = ({
         </button>
 
         {/* 2. Menu Hình học Toán học 2D & 3D */}
-        <div className="relative-container">
+        <div className="relative-container" ref={shapeContainerRef}>
           <button
             type="button"
             className={`math-btn math-shape-trigger ${currentShape ? 'is-active' : ''}`}
@@ -146,55 +220,48 @@ export const MathDrawingToolbar: React.FC<MathDrawingToolbarProps> = ({
             <ChevronDown size={11} className="ml-0.5 opacity-70" />
           </button>
 
-          {isShapeMenuOpen && (
+          {/* Desktop dropdown */}
+          {isShapeMenuOpen && !isMobile && (
             <div className="math-shape-dropdown-menu">
-              <div className="shape-dropdown-section">
-                <div className="dropdown-menu-header">📐 Hình Học Phẳng (2D)</div>
-                <div className="shape-items-grid">
-                  {MATH_SHAPES_2D.map((shape) => (
-                    <button
-                      key={shape.tool}
-                      type="button"
-                      className={`shape-item-btn ${activeTool === shape.tool ? 'is-selected' : ''}`}
-                      onClick={() => {
-                        onSelectTool(shape.tool);
-                        setIsShapeMenuOpen(false);
-                      }}
-                    >
-                      <span className="shape-icon-box">{shape.icon}</span>
-                      <span className="shape-label-text">{shape.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="shape-dropdown-divider" />
-
-              <div className="shape-dropdown-section">
-                <div className="dropdown-menu-header flex items-center justify-between">
-                  <span>📦 Hình Học Không Gian (3D)</span>
-                  <span className="badge-3d-tag">SGK Chuẩn</span>
-                </div>
-                <div className="shape-items-grid">
-                  {MATH_SHAPES_3D.map((shape) => (
-                    <button
-                      key={shape.tool}
-                      type="button"
-                      className={`shape-item-btn shape-3d-btn ${activeTool === shape.tool ? 'is-selected' : ''}`}
-                      onClick={() => {
-                        onSelectTool(shape.tool);
-                        setIsShapeMenuOpen(false);
-                      }}
-                    >
-                      <span className="shape-icon-box">{shape.icon}</span>
-                      <span className="shape-label-text">{shape.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {renderShapeItems()}
             </div>
           )}
         </div>
+
+        {/* Mobile modal portal: Hiển thị toàn diện không bao giờ bị cắt do overflow-x trên điện thoại */}
+        {isShapeMenuOpen && isMobile && createPortal(
+          <div className="modal-backdrop" onClick={() => setIsShapeMenuOpen(false)}>
+            <div
+              className="modal-container math-shape-mobile-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <div className="flex items-center gap-2">
+                  <div className="math-modal-icon-badge">
+                    <Shapes size={18} className="text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="modal-title">Hình Học Toán Học (2D & 3D)</h3>
+                    <p className="text-xs text-muted">Chọn hình để vẽ trực tiếp lên bài giảng</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setIsShapeMenuOpen(false)}
+                  aria-label="Đóng"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                {renderShapeItems()}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
         {/* 3. Nút Chèn Công Thức Toán Học */}
         <button

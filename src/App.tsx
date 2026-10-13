@@ -621,6 +621,7 @@ export const App: React.FC = () => {
             ? `${activeDoc.studentName} / ${activeDoc.lessonName || 'Lesson'}`
             : undefined
         }
+        onToggleSidebar={() => setIsSidebarOpen(true)}
       />
 
       {/* 2. Thanh tab ngang chuyển tài liệu tức thì */}

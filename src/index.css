@@ -1549,67 +1549,261 @@ body {
 /* ==========================================================================
    9. Responsive Design (Mobile, Tablet, Desktop)
    ========================================================================== */
+.mobile-header-sidebar-btn {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  .mobile-header-sidebar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
   .btn-label-mobile-hidden {
     display: none;
+  }
+
+  .app-header {
+    padding: 6px 10px;
+    height: 48px;
+    gap: 8px;
+  }
+
+  .brand-logo-img {
+    height: 28px;
+    max-width: 120px;
+  }
+
+  .header-current-file {
+    max-width: 150px;
+    font-size: 0.72rem;
+    padding: 2px 6px;
+  }
+
+  .header-current-file .file-folder-tag {
+    display: none;
+  }
+
+  /* Khung hiển thị tài liệu: Tối đa hoá diện tích màn hình điện thoại */
+  .pdf-viewport-container,
+  .image-viewport-container,
+  .word-viewport-container {
+    padding: 8px 4px 75px 4px !important;
+  }
+
+  /* File Word trên điện thoại: bỏ min-width 680px để không bị tràn */
+  .word-canvas-wrapper {
+    min-width: unset !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+  }
+
+  /* Thanh tab ngang cuộn mượt cảm ứng */
+  .doc-tabs-bar {
+    height: 38px;
+    padding: 0 4px;
+    gap: 4px;
+  }
+
+  .tabs-scroll-viewport {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .tabs-scroll-viewport::-webkit-scrollbar {
+    display: none;
+  }
+
+  .doc-tab-item {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    max-width: 140px;
+  }
+
+  /* Thanh công cụ vẽ Toán nổi trên điện thoại */
+  .math-drawing-floating-bar {
+    top: 50px !important;
+    left: 4px !important;
+    right: 4px !important;
+    transform: none !important;
+    max-width: calc(100vw - 8px) !important;
+    width: auto !important;
+    padding: 4px 8px !important;
+    gap: 4px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    border-radius: var(--radius-md) !important;
+  }
+
+  .math-drawing-floating-bar::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .math-btn {
+    width: 32px !important;
+    height: 32px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .math-divider {
+    margin: 0 2px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .math-dropdown-btn {
+    padding: 0 6px !important;
+    height: 30px !important;
+    font-size: 0.72rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Thanh điều khiển nổi dưới đáy (Toolbar) */
+  .floating-toolbar-wrapper {
+    bottom: 8px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    max-width: calc(100vw - 12px) !important;
+    width: auto !important;
+  }
+
+  .floating-toolbar {
+    padding: 4px 8px !important;
+    gap: 3px !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+  }
+
+  .floating-toolbar::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .toolbar-btn {
+    width: 32px !important;
+    height: 32px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .laser-label-text {
+    display: none !important;
+  }
+
+  /* Sidebar cây thư mục mở toàn màn hình điện thoại */
+  .document-sidebar-panel {
+    width: 100vw !important;
+    max-width: 100vw !important;
+  }
+
+  .tree-student-header,
+  .tree-lesson-header,
+  .sidebar-file-row {
+    min-height: 42px !important;
+    padding: 8px 12px !important;
+  }
+
+  /* Bảng nháp mở toàn màn hình điện thoại */
+  .math-scratchpad-panel {
+    position: fixed !important;
+    top: 48px !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    z-index: 45 !important;
+  }
+
+  /* Modal trên điện thoại */
+  .modal-backdrop {
+    padding: 10px !important;
+  }
+
+  .modal-container {
+    max-width: 95vw !important;
+    width: 95vw !important;
+  }
+
+  .modal-body {
+    max-height: 78vh !important;
+  }
+
+  .math-shape-mobile-modal {
+    max-width: 94vw !important;
+    width: 94vw !important;
+  }
+
+  /* Thanh công cụ nhanh trên hình chọn (Quick action bar) trên điện thoại */
+  .shape-quick-action-bar {
+    max-width: 94vw !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding: 3px 6px !important;
+    gap: 3px !important;
+  }
+
+  .shape-quick-action-bar::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .quick-drag-indicator {
+    padding: 2px 5px !important;
+    font-size: 0.65rem !important;
+  }
+
+  .quick-action-btn {
+    height: 24px !important;
+    padding: 0 5px !important;
+    font-size: 0.68rem !important;
+  }
+
+  .quick-color-dot {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .quick-width-btn {
+    width: 20px !important;
+    height: 20px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-logo-img {
+    height: 25px;
+    max-width: 100px;
   }
 
   .header-current-file {
     display: none;
   }
 
-  .floating-toolbar {
-    padding: 4px 10px;
-    gap: 4px;
-  }
-
-  .toolbar-btn {
-    width: 30px;
-    height: 30px;
-  }
-
-  .laser-label-text {
-    display: none;
-  }
-
-  .floating-toolbar-wrapper {
-    bottom: 14px;
-  }
-
-  .document-sidebar-panel {
-    width: 100vw;
-    max-width: 100vw;
-  }
-}
-
-@media (max-width: 480px) {
-  .brand-logo-img {
-    height: 32px;
-    max-width: 140px;
-  }
-
-  .brand-tagline {
-    display: none;
-  }
-
-  .meet-status-text {
-    display: none;
-  }
-
-  .meet-stream-indicator {
-    padding: 4px 8px;
-  }
-
-  .add-btn-text {
-    display: none;
-  }
-
+  .add-btn-text,
   .sidebar-btn-label {
     display: none;
   }
 
   .folder-inputs-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  .toolbar-page-input {
+    width: 28px !important;
+    height: 26px !important;
+  }
+
+  .toolbar-page-total {
+    font-size: 0.72rem !important;
   }
 }
 
@@ -2858,8 +3052,8 @@ body {
 /* 8 Tay nắm co giãn (Resize Handles) */
 .selection-resize-handle {
   position: absolute;
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   background-color: #ffffff;
   border: 1.5px solid #2563eb;
   border-radius: 2px;
@@ -2867,6 +3061,16 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   transition: transform 0.1s ease, background-color 0.1s ease;
   z-index: 35;
+}
+
+/* Vùng chạm ngón tay 34px x 34px cực nhạy trên màn hình cảm ứng điện thoại */
+.selection-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  right: -12px;
+  bottom: -12px;
 }
 
 .selection-resize-handle:hover {

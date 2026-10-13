@@ -690,30 +690,35 @@ export const AnnotationCanvas = React.memo<AnnotationCanvasProps>(({
     canvas.style.height = `${height}px`;
   }, [width, height]);
 
-  // 2. Redraw nhanh chỉ dùng clearRect (cực mượt, 120 FPS, không tạo GPU garbage)
+  // Hàm vẽ trực tiếp lên GPU canvas siêu tốc (0ms delay, không phụ thuộc vào React state rendering loop)
+  const renderStrokesDirect = useCallback(
+    (strokesToRender: DrawStroke[], preview?: DrawStroke | null) => {
+      const canvas = canvasRef.current;
+      if (!canvas || width <= 0 || height <= 0) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      if (showGrid) {
+        drawGridLines(ctx);
+      }
+
+      strokesToRender.forEach((s) => renderStroke(ctx, s));
+
+      if (preview) {
+        renderStroke(ctx, preview);
+      }
+    },
+    [width, height, showGrid, renderStroke]
+  );
+
+  // 2. Redraw thông thường khi strokes hoặc preview thay đổi
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || width <= 0 || height <= 0) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
-    if (showGrid) {
-      drawGridLines(ctx);
-    }
-
-    // Vẽ danh sách nét đã lưu / đang kéo
-    displayStrokes.forEach((s) => renderStroke(ctx, s));
-
-    // Vẽ nét preview khi đang vẽ nét mới
-    if (livePreviewStroke) {
-      renderStroke(ctx, livePreviewStroke);
-    }
-  }, [width, height, displayStrokes, livePreviewStroke, renderStroke, showGrid]);
+    renderStrokesDirect(displayStrokes, livePreviewStroke);
+  }, [displayStrokes, livePreviewStroke, renderStrokesDirect]);
 
   // Dọn dẹp RAF khi unmount
   useEffect(() => {
@@ -770,6 +775,9 @@ export const AnnotationCanvas = React.memo<AnnotationCanvasProps>(({
   // ===========================================================================
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // Ngăn chặn 300ms tap delay và gesture scroll của trình duyệt điện thoại
+    if (e.cancelable) e.preventDefault();
+
     const pt = getCanvasCoords(e);
     const isPenLike = activeTool === 'pen' || activeTool === 'highlighter';
     const isShapeTool = SHAPE_TOOLS.includes(activeTool);
@@ -879,9 +887,13 @@ export const AnnotationCanvas = React.memo<AnnotationCanvasProps>(({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isDrawingRef.current || isDraggingSelectionRef.current || isResizingRef.current) {
+      if (e.cancelable) e.preventDefault();
+    }
+
     const pt = getCanvasCoords(e);
 
-    // A. Kéo thả di chuyển nét đang chọn (Drag-to-move)
+    // A. Kéo thả di chuyển nét đang chọn (Drag-to-move): Vẽ trực tiếp qua GPU tức thì 0ms latency
     if (isDraggingSelectionRef.current && selectedId) {
       const dx = pt.x - dragStartPointRef.current.x;
       const dy = pt.y - dragStartPointRef.current.y;
@@ -899,16 +911,11 @@ export const AnnotationCanvas = React.memo<AnnotationCanvasProps>(({
       });
       localModifiedRef.current = updatedStrokes;
 
-      if (!rafIdRef.current) {
-        rafIdRef.current = requestAnimationFrame(() => {
-          rafIdRef.current = null;
-          setLocalModifiedStrokes(localModifiedRef.current);
-        });
-      }
+      renderStrokesDirect(updatedStrokes, livePreviewStroke);
       return;
     }
 
-    // B. Co giãn hình đang chọn bằng Resize Handle
+    // B. Co giãn hình đang chọn bằng Resize Handle: Vẽ trực tiếp qua GPU tức thì 0ms latency
     if (isResizingRef.current && selectedId && resizeInitialBoxRef.current && resizeInitialStrokeRef.current) {
       const handle = activeResizeHandleRef.current;
       const initialBox = resizeInitialBoxRef.current;
@@ -944,12 +951,7 @@ export const AnnotationCanvas = React.memo<AnnotationCanvasProps>(({
       });
       localModifiedRef.current = updatedStrokes;
 
-      if (!rafIdRef.current) {
-        rafIdRef.current = requestAnimationFrame(() => {
-          rafIdRef.current = null;
-          setLocalModifiedStrokes(localModifiedRef.current);
-        });
-      }
+      renderStrokesDirect(updatedStrokes, livePreviewStroke);
       return;
     }
 
@@ -1166,6 +1168,7 @@ export const AnnotationCanvas = React.memo<AnnotationCanvasProps>(({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onPointerLeave={() => setHoveredStrokeId(null)}
         style={{
           position: 'absolute',

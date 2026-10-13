@@ -4,6 +4,7 @@ import {
   Sun,
   Moon,
   Cloud,
+  FolderTree,
 } from 'lucide-react';
 import type { GoogleUser } from '../types/document';
 
@@ -15,6 +16,7 @@ interface HeaderProps {
   googleUser: GoogleUser | null;
   activeDocName?: string;
   activeDocFolder?: string;
+  onToggleSidebar?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,11 +27,24 @@ export const Header: React.FC<HeaderProps> = ({
   googleUser,
   activeDocName,
   activeDocFolder,
+  onToggleSidebar,
 }) => {
   return (
     <header className="app-header">
       {/* Khối bên trái: Logo & Thương hiệu Kim Ngân LEARN */}
       <div className="header-brand-group">
+        {onToggleSidebar && (
+          <button
+            type="button"
+            className="mobile-header-sidebar-btn"
+            onClick={onToggleSidebar}
+            title="Mở cây thư mục bài giảng"
+            aria-label="Cây thư mục"
+          >
+            <FolderTree size={16} />
+          </button>
+        )}
+
         <div className="brand-logo-container" title="Kim Ngân LEARN - Workspace Dạy Kèm 1:1">
           <img
             src="/kimngan-logo.png"
@@ -37,7 +52,6 @@ export const Header: React.FC<HeaderProps> = ({
             className="brand-logo-img"
           />
         </div>
-        
       </div>
 
       {/* Khối ở giữa: Trạng thái Google Meet Stream & Tên bài học */}
