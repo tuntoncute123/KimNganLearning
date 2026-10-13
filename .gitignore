@@ -35,3 +35,6 @@ dist-ssr
 *.sln
 *.sw?
 Thumbs.db
+
+# Vercel
+.vercel
