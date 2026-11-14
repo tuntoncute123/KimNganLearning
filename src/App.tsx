@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import type { DocumentItem, DocType, GoogleUser, DrawTool, DrawStroke } from './types/document';
 import {
   getAllDocuments,
+  getAllAnnotations,
   saveDocument,
   updateDocumentProgress,
   deleteDocument,
@@ -16,9 +17,8 @@ import {
 import { Header } from './components/Header';
 import { DocumentTabBar } from './components/DocumentTabBar';
 import { DocumentSidebar } from './components/DocumentSidebar';
-import { PDFViewer } from './components/PDFViewer';
+import { useAnnotations } from './hooks/useAnnotations';
 import { ImageViewer } from './components/ImageViewer';
-import { WordViewer } from './components/WordViewer';
 import { Toolbar } from './components/Toolbar';
 import { MathDrawingToolbar } from './components/MathDrawingToolbar';
 import { MathScratchpad } from './components/MathScratchpad';
@@ -27,6 +27,9 @@ import { EmptyState } from './components/EmptyState';
 import { MeetGuideModal } from './components/MeetGuideModal';
 import { GoogleDriveSettingsModal } from './components/GoogleDriveSettingsModal';
 import { createSamplePdfBuffer, createSampleImageBuffer } from './utils/sampleGenerator';
+
+const PDFViewer = lazy(() => import('./components/PDFViewer').then((module) => ({ default: module.PDFViewer })));
+const WordViewer = lazy(() => import('./components/WordViewer').then((module) => ({ default: module.WordViewer })));
 
 export const App: React.FC = () => {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -59,15 +62,25 @@ export const App: React.FC = () => {
   const [activeDrawTool, setActiveDrawTool] = useState<DrawTool>('select');
   const [drawColor, setDrawColor] = useState<string>('#ef4444');
   const [drawStrokeWidth, setDrawStrokeWidth] = useState<number>(2);
-  const [pageStrokesMap, setPageStrokesMap] = useState<Record<string, DrawStroke[]>>({});
-  const [undoStackMap, setUndoStackMap] = useState<Record<string, DrawStroke[][]>>({});
-  const [redoStackMap, setRedoStackMap] = useState<Record<string, DrawStroke[][]>>({});
   const [isScratchpadOpen, setIsScratchpadOpen] = useState<boolean>(false);
-  const [scratchpadStrokes, setScratchpadStrokes] = useState<DrawStroke[]>([]);
   const [selectedStrokeId, setSelectedStrokeId] = useState<string | null>(null);
   const [isMathModalOpen, setIsMathModalOpen] = useState<boolean>(false);
   const [editingStroke, setEditingStroke] = useState<DrawStroke | null>(null);
   const [mathFormulaClickPos, setMathFormulaClickPos] = useState<{ x: number; y: number } | null>(null);
+
+  const [isRestoring, setIsRestoring] = useState(true);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const activeDoc = documents.find((doc) => doc.id === activeId) || null;
+  const annotations = useAnnotations(activeDoc?.id || null, activeDoc?.currentPage || 1);
+  const {
+    currentPageStrokes, scratchpadStrokes, setScratchpadStrokes,
+    canUndo, canRedo, handlePageStrokesChange, handleUndo, handleRedo,
+    handleClearCurrentPage, hydrate,
+  } = annotations;
+  const reportStorageError = useCallback((error: unknown) => {
+    console.error('Lỗi lưu trữ:', error);
+    setStorageError('Không thể lưu thay đổi trên thiết bị. Hãy kiểm tra dung lượng trống và quyền lưu trữ của trình duyệt.');
+  }, []);
 
   const appContainerRef = useRef<HTMLDivElement>(null);
   const fitScaleRef = useRef<number>(1.0);
@@ -85,21 +98,27 @@ export const App: React.FC = () => {
 
   // 2. Khởi tạo danh sách tài liệu từ IndexedDB
   useEffect(() => {
+    let cancelled = false;
     const loadSavedDocs = async () => {
       try {
-        const saved = await getAllDocuments();
+        const [saved, drawings] = await Promise.all([getAllDocuments(), getAllAnnotations()]);
+        if (cancelled) return;
+        hydrate(drawings);
         setDocuments(saved);
         if (saved.length > 0) {
           const mostRecent = [...saved].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)[0];
           setActiveId(mostRecent ? mostRecent.id : saved[0].id);
         }
       } catch (err) {
-        console.error('Lỗi khi đọc tài liệu từ IndexedDB:', err);
+        if (!cancelled) setStorageError(err instanceof Error ? err.message : 'Không thể khôi phục tài liệu trên thiết bị.');
+      } finally {
+        if (!cancelled) setIsRestoring(false);
       }
     };
 
     loadSavedDocs();
-  }, []);
+    return () => { cancelled = true; };
+  }, [hydrate]);
 
   // 3. Toàn màn hình
   useEffect(() => {
@@ -175,22 +194,17 @@ export const App: React.FC = () => {
     tokenClientRef.current = null;
   };
 
-  // 7. Tài liệu đang chọn
-  const activeDoc = documents.find((doc) => doc.id === activeId) || null;
-  const currentPageKey = activeDoc ? `${activeDoc.id}_${activeDoc.currentPage || 1}` : '';
-  const currentPageStrokes = currentPageKey ? (pageStrokesMap[currentPageKey] || []) : [];
-  const canUndo = currentPageKey ? (undoStackMap[currentPageKey]?.length || 0) > 0 : false;
-  const canRedo = currentPageKey ? (redoStackMap[currentPageKey]?.length || 0) > 0 : false;
-
   // 8. Chuyển đổi tài liệu tức thì
   const handleSelectDoc = useCallback((id: string) => {
     setActiveId(id);
+    setForceShowHome(false);
+    setSelectedStrokeId(null);
     const now = Date.now();
     setDocuments((prev) =>
       prev.map((d) => (d.id === id ? { ...d, lastOpenedAt: now } : d))
     );
-    updateDocumentProgress(id, { lastOpenedAt: now });
-  }, []);
+    void updateDocumentProgress(id, { lastOpenedAt: now }).catch(reportStorageError);
+  }, [reportStorageError]);
 
   // 9. Xử lý tải file lên
   const handleFilesSelected = async (
@@ -283,13 +297,14 @@ export const App: React.FC = () => {
         await saveDocument(docItem);
         newDocs.push(docItem);
       } catch (err) {
-        console.error(`Lỗi khi xử lý file ${file.name}:`, err);
+        reportStorageError(err);
       }
     }
 
     if (newDocs.length > 0) {
       setDocuments((prev) => [...prev, ...newDocs]);
       setActiveId(newDocs[newDocs.length - 1].id);
+      setForceShowHome(false);
     }
   };
 
@@ -297,29 +312,27 @@ export const App: React.FC = () => {
   const handleDeleteDoc = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
+      await annotations.flush();
       await deleteDocument(id);
-      setDocuments((prev) => {
-        const filtered = prev.filter((d) => d.id !== id);
-        if (activeId === id) {
-          const nextActive = filtered.length > 0 ? filtered[filtered.length - 1].id : null;
-          setActiveId(nextActive);
-        }
-        return filtered;
-      });
+      annotations.forgetDocument(id);
+      setDocuments((prev) => prev.filter((doc) => doc.id !== id));
+      setActiveId((current) => current === id ? (documents.filter((doc) => doc.id !== id).at(-1)?.id || null) : current);
     } catch (err) {
-      console.error('Lỗi khi xóa tài liệu:', err);
+      reportStorageError(err);
     }
   };
 
   // 11. Dọn sạch toàn bộ kho tài liệu
   const handleClearAll = async () => {
     try {
+      await annotations.flush();
       await clearAllDocuments();
+      annotations.reset();
       setDocuments([]);
       setActiveId(null);
       setIsSidebarOpen(false);
     } catch (err) {
-      console.error('Lỗi khi dọn dẹp kho tài liệu:', err);
+      reportStorageError(err);
     }
   };
 
@@ -362,7 +375,7 @@ export const App: React.FC = () => {
         size: sampleImgBuffer.byteLength,
         data: sampleImgBuffer,
         createdAt: Date.now() + 1,
-        lastOpenedAt: Date.now() + 1,
+        lastOpenedAt: 0,
         currentPage: 1,
         totalPages: 1,
         zoom: 0.9,
@@ -375,45 +388,28 @@ export const App: React.FC = () => {
       await saveDocument(samplePdf);
       await saveDocument(sampleImg);
 
-      setDocuments([samplePdf, sampleImg]);
+      setDocuments((previous) => [...previous, samplePdf, sampleImg]);
+      setForceShowHome(false);
       setActiveId(samplePdf.id);
     } catch (err) {
-      console.error('Lỗi khi tạo tài liệu mẫu:', err);
+      reportStorageError(err);
     }
   };
 
-  // 13. Điều hướng trang, zoom, xoay
+  // Persist outside state updaters: React StrictMode may invoke an updater twice.
   const handlePageChange = useCallback((newPage: number, totalPages?: number) => {
     if (!activeId) return;
-    setDocuments((prev) =>
-      prev.map((d) => {
-        if (d.id === activeId) {
-          const updated = {
-            ...d,
-            currentPage: newPage,
-            totalPages: totalPages !== undefined ? totalPages : d.totalPages,
-          };
-          updateDocumentProgress(activeId, { currentPage: newPage });
-          return updated;
-        }
-        return d;
-      })
-    );
-  }, [activeId]);
+    const updates = { currentPage: newPage, ...(totalPages !== undefined ? { totalPages } : {}) };
+    setDocuments((prev) => prev.map((doc) => doc.id === activeId ? { ...doc, ...updates } : doc));
+    setSelectedStrokeId(null);
+    void updateDocumentProgress(activeId, updates).catch(reportStorageError);
+  }, [activeId, reportStorageError]);
 
   const handleZoomChange = useCallback((newZoom: number) => {
     if (!activeId) return;
-    setDocuments((prev) =>
-      prev.map((d) => {
-        if (d.id === activeId) {
-          const updated = { ...d, zoom: newZoom };
-          updateDocumentProgress(activeId, { zoom: newZoom });
-          return updated;
-        }
-        return d;
-      })
-    );
-  }, [activeId]);
+    setDocuments((prev) => prev.map((doc) => doc.id === activeId ? { ...doc, zoom: newZoom } : doc));
+    void updateDocumentProgress(activeId, { zoom: newZoom }).catch(reportStorageError);
+  }, [activeId, reportStorageError]);
 
   const handleResetZoom = useCallback(() => {
     handleZoomChange(1.0);
@@ -425,40 +421,16 @@ export const App: React.FC = () => {
     }
   }, [handleZoomChange]);
 
-  const handleRotate = useCallback(() => {
-    if (!activeId) return;
-    setDocuments((prev) =>
-      prev.map((d) => {
-        if (d.id === activeId) {
-          const newRot = (d.rotation + 90) % 360;
-          updateDocumentProgress(activeId, { rotation: newRot });
-          return { ...d, rotation: newRot };
-        }
-        return d;
-      })
-    );
-  }, [activeId]);
+  const handleRotate = () => {
+    if (!activeDoc) return;
+    const rotation = (activeDoc.rotation + 90) % 360;
+    setDocuments((prev) => prev.map((doc) => doc.id === activeDoc.id ? { ...doc, rotation } : doc));
+    void updateDocumentProgress(activeDoc.id, { rotation }).catch(reportStorageError);
+  };
 
   const handleFitWidthCalculated = useCallback((scale: number) => {
     fitScaleRef.current = scale;
   }, []);
-
-  // 14. Thao tác Nét vẽ & Annotation Toán
-  const handlePageStrokesChange = useCallback((newStrokes: DrawStroke[]) => {
-    if (!currentPageKey) return;
-    setUndoStackMap((prevMap) => ({
-      ...prevMap,
-      [currentPageKey]: [...(prevMap[currentPageKey] || []), pageStrokesMap[currentPageKey] || []],
-    }));
-    setRedoStackMap((prevMap) => ({
-      ...prevMap,
-      [currentPageKey]: [],
-    }));
-    setPageStrokesMap((prevMap) => ({
-      ...prevMap,
-      [currentPageKey]: newStrokes,
-    }));
-  }, [currentPageKey, pageStrokesMap]);
 
   const handleEditMathFormula = (stroke: DrawStroke) => {
     setEditingStroke(stroke);
@@ -517,75 +489,10 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleUndo = () => {
-    if (!currentPageKey) return;
-    const undoStack = undoStackMap[currentPageKey] || [];
-    if (undoStack.length === 0) return;
-
-    const previousState = undoStack[undoStack.length - 1];
-    const newUndoStack = undoStack.slice(0, -1);
-    const current = pageStrokesMap[currentPageKey] || [];
-
-    setRedoStackMap((prev) => ({
-      ...prev,
-      [currentPageKey]: [...(prev[currentPageKey] || []), current],
-    }));
-    setUndoStackMap((prev) => ({
-      ...prev,
-      [currentPageKey]: newUndoStack,
-    }));
-    setPageStrokesMap((prev) => ({
-      ...prev,
-      [currentPageKey]: previousState,
-    }));
-  };
-
-  const handleRedo = () => {
-    if (!currentPageKey) return;
-    const redoStack = redoStackMap[currentPageKey] || [];
-    if (redoStack.length === 0) return;
-
-    const nextState = redoStack[redoStack.length - 1];
-    const newRedoStack = redoStack.slice(0, -1);
-    const current = pageStrokesMap[currentPageKey] || [];
-
-    setUndoStackMap((prev) => ({
-      ...prev,
-      [currentPageKey]: [...(prev[currentPageKey] || []), current],
-    }));
-    setRedoStackMap((prev) => ({
-      ...prev,
-      [currentPageKey]: newRedoStack,
-    }));
-    setPageStrokesMap((prev) => ({
-      ...prev,
-      [currentPageKey]: nextState,
-    }));
-  };
-
-  const handleClearCurrentPage = () => {
-    if (!currentPageKey) return;
-    const current = pageStrokesMap[currentPageKey] || [];
-    if (current.length === 0) return;
-
-    setUndoStackMap((prev) => ({
-      ...prev,
-      [currentPageKey]: [...(prev[currentPageKey] || []), current],
-    }));
-    setRedoStackMap((prev) => ({
-      ...prev,
-      [currentPageKey]: [],
-    }));
-    setPageStrokesMap((prev) => ({
-      ...prev,
-      [currentPageKey]: [],
-    }));
-  };
-
   // Phím tắt Undo / Redo toàn cục
   useEffect(() => {
     const handleKeyShortcut = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      if ((e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable], [role="dialog"], .modal-backdrop')) return;
       if (e.ctrlKey || e.metaKey) {
         if (e.key === 'z' || e.key === 'Z') {
           if (e.shiftKey) {
@@ -624,6 +531,23 @@ export const App: React.FC = () => {
         onToggleSidebar={() => setIsSidebarOpen(true)}
       />
 
+      {storageError && (
+        <div className="workspace-storage-alert" role="alert">
+          <span>{storageError}</span>
+          <button type="button" onClick={() => setStorageError(null)} aria-label="Đóng thông báo">×</button>
+        </div>
+      )}
+      {!isRestoring && documents.length > 0 && (
+        <div className={`workspace-save-status is-${annotations.saveStatus}`} role="status" aria-live="polite">
+          {annotations.saveStatus === 'saving' ? 'Đang lưu nét vẽ…' : annotations.saveStatus === 'error'
+            ? 'Chưa lưu được nét vẽ. Hãy kiểm tra bộ nhớ trình duyệt trước khi đóng trang.'
+            : 'Nét vẽ được lưu trên thiết bị này'}
+          {annotations.saveStatus === 'error' && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={annotations.retrySaving}>Thử lưu lại</button>
+          )}
+        </div>
+      )}
+
       {/* 2. Thanh tab ngang chuyển tài liệu tức thì */}
       {documents.length > 0 && (
         <DocumentTabBar
@@ -638,7 +562,7 @@ export const App: React.FC = () => {
       )}
 
       {/* 3. Thanh công cụ vẽ Toán học & Annotation nổi */}
-      {activeDoc && (
+      {activeDoc && !forceShowHome && (
         <MathDrawingToolbar
           activeTool={activeDrawTool}
           onSelectTool={(tool) => {
@@ -669,7 +593,9 @@ export const App: React.FC = () => {
         role="region"
         aria-label="Khu vực trình bày bài giảng"
       >
-        {documents.length === 0 || forceShowHome ? (
+        {isRestoring ? (
+          <div className="viewer-state-message" role="status">Đang khôi phục tài liệu và nét vẽ…</div>
+        ) : documents.length === 0 || forceShowHome ? (
           <EmptyState
             onFilesSelected={(files, sn, ln) => {
               setForceShowHome(false);
@@ -688,6 +614,7 @@ export const App: React.FC = () => {
           <div className="workspace-split-container">
             {/* Cột bên trái: Tài liệu bài học gốc (PDF hoặc Ảnh) */}
             <div className="active-viewer-container">
+              <Suspense fallback={<div className="viewer-state-message" role="status">Đang tải bộ đọc tài liệu…</div>}>
               {activeDoc.type === 'pdf' ? (
                 <PDFViewer
                   key={activeDoc.id}
@@ -751,6 +678,8 @@ export const App: React.FC = () => {
                   onSelectStroke={setSelectedStrokeId}
                 />
               )}
+
+              </Suspense>
 
               {/* Thanh điều khiển nổi phía dưới (Phân trang, Zoom, Laser) */}
               <Toolbar

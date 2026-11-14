@@ -44,13 +44,13 @@ interface FolderNode {
 }
 
 function buildTree(docs: DocumentItem[]): FolderNode[] {
-  const studentMap: Record<string, Record<string, DocumentItem[]>> = {};
+  const studentMap: Record<string, Record<string, DocumentItem[]>> = Object.create(null);
 
   for (const doc of docs) {
     const student = doc.studentName?.trim() || 'Chưa phân loại';
     const lesson = doc.lessonName?.trim() || 'Buổi học';
 
-    if (!studentMap[student]) studentMap[student] = {};
+    if (!studentMap[student]) studentMap[student] = Object.create(null);
     if (!studentMap[student][lesson]) studentMap[student][lesson] = [];
     studentMap[student][lesson].push(doc);
   }
@@ -264,10 +264,10 @@ export const DocumentSidebar: React.FC<DocumentSidebarProps> = ({
   onOpenUpload,
   onGoHome,
 }) => {
-  if (!isOpen) return null;
-
   const tree = useMemo(() => buildTree(documents), [documents]);
   const totalSize = documents.reduce((acc, d) => acc + d.size, 0);
+
+  if (!isOpen) return null;
 
   return (
     <>
