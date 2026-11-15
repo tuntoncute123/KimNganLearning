@@ -42,3 +42,4 @@ Thumbs.db
 # Browser tests
 /test-results/
 /playwright-report/
+/artifacts/

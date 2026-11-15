@@ -13,6 +13,7 @@ import { ThunderboltOutlined } from '@ant-design/icons';
 import type { GoogleUser } from '../types/document';
 
 interface EmptyStateProps {
+  busy?: boolean;
   onFilesSelected: (files: FileList | File[], studentName: string, lessonName: string) => void;
   onLoadSample: (studentName: string, lessonName: string) => void;
   isModal?: boolean;
@@ -24,6 +25,7 @@ interface EmptyStateProps {
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
+  busy = false,
   onFilesSelected,
   onLoadSample,
   isModal = false,
@@ -51,15 +53,16 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    if (!busy && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       onFilesSelected(e.dataTransfer.files, studentName, lessonName);
       if (onCloseModal) onCloseModal();
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      onFilesSelected(e.target.files, studentName, lessonName);
+    if (!busy && e.target.files && e.target.files.length > 0) {
+      onFilesSelected(Array.from(e.target.files), studentName, lessonName);
+      e.target.value = '';
       if (onCloseModal) onCloseModal();
     }
   };
@@ -131,11 +134,15 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => !busy && fileInputRef.current?.click()}
+        role="button" tabIndex={0} aria-label="Thêm tài liệu từ máy tính"
+        onKeyDown={event => { if (event.target === event.currentTarget && ['Enter', ' '].includes(event.key)) { event.preventDefault(); if (!busy) fileInputRef.current?.click(); } }}
       >
         <input
           ref={fileInputRef}
           type="file"
+          disabled={busy}
+          aria-label="Chọn tài liệu"
           multiple
           accept=".pdf,image/png,image/jpeg,image/webp,image/jpg,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           style={{ display: 'none' }}
@@ -183,6 +190,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
           <button
             type="button"
             className="btn btn-secondary sample-btn"
+            disabled={busy}
             onClick={() => onLoadSample(studentName, lessonName)}
           >
             <ThunderboltOutlined style={{ fontSize: '16px', color: '#f59e0b' }} />

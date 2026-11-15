@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { saveAnnotations, type AnnotationRecord } from '../services/db';
-import type { DrawStroke } from '../types/document';
+import type { AnnotationBasis, DrawStroke } from '../types/document';
 
 const HISTORY_LIMIT = 50;
 const SCRATCHPAD_KEY = 'scratchpad';
-type History = { strokes: DrawStroke[]; undo: DrawStroke[][]; redo: DrawStroke[][] };
+const DEFAULT_BASIS: AnnotationBasis = { zoom: 1, rotation: 0 };
+type History = { basis?: AnnotationBasis; strokes: DrawStroke[]; undo: DrawStroke[][]; redo: DrawStroke[][] };
 const EMPTY: History = { strokes: [], undo: [], redo: [] };
 
 export function useAnnotations(documentId: string | null, page: number) {
@@ -23,7 +24,7 @@ export function useAnnotations(documentId: string | null, page: number) {
   }, []);
 
   const hydrate = useCallback((records: AnnotationRecord[]) => {
-    publish(Object.fromEntries(records.map((record) => [record.key, { ...EMPTY, strokes: record.strokes }])));
+    publish(Object.fromEntries(records.map((record) => [record.key, { ...EMPTY, strokes: record.strokes, basis: record.basis || DEFAULT_BASIS }])));
   }, [publish]);
 
   const persist = (record: AnnotationRecord) => {
@@ -46,6 +47,7 @@ export function useAnnotations(documentId: string | null, page: number) {
     if (action === 'undo') {
       if (!previous.undo.length) return;
       next = {
+        basis: previous.basis,
         strokes: previous.undo[previous.undo.length - 1],
         undo: previous.undo.slice(0, -1),
         redo: [...previous.redo, previous.strokes].slice(-HISTORY_LIMIT),
@@ -53,15 +55,16 @@ export function useAnnotations(documentId: string | null, page: number) {
     } else if (action === 'redo') {
       if (!previous.redo.length) return;
       next = {
+        basis: previous.basis,
         strokes: previous.redo[previous.redo.length - 1],
         undo: [...previous.undo, previous.strokes].slice(-HISTORY_LIMIT),
         redo: previous.redo.slice(0, -1),
       };
     } else {
-      next = { strokes, undo: [...previous.undo, previous.strokes].slice(-HISTORY_LIMIT), redo: [] };
+      next = { basis: previous.basis, strokes, undo: [...previous.undo, previous.strokes].slice(-HISTORY_LIMIT), redo: [] };
     }
     publish({ ...latest.current, [key]: next });
-    persist({ key, documentId, strokes: next.strokes });
+    persist({ key, documentId, strokes: next.strokes, basis: next.basis || DEFAULT_BASIS });
   };
 
   const setScratchpadStrokes = (value: DrawStroke[] | ((previous: DrawStroke[]) => DrawStroke[])) => {
@@ -79,7 +82,16 @@ export function useAnnotations(documentId: string | null, page: number) {
     if (!unsaved.current.size) setSaveStatus('saved');
   };
 
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (unsaved.current.size) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, []);
+
   return {
+    basis: current.basis || DEFAULT_BASIS,
     currentPageStrokes: current.strokes,
     scratchpadStrokes: pages[SCRATCHPAD_KEY]?.strokes || [],
     canUndo: current.undo.length > 0,
@@ -87,7 +99,7 @@ export function useAnnotations(documentId: string | null, page: number) {
     saveStatus,
     hydrate,
     forgetDocument,
-    flush: () => pending.current,
+    flush: async () => { await pending.current; if (unsaved.current.size) throw new Error('Còn nét vẽ chưa lưu. Hãy thử lưu lại trước khi tiếp tục.'); },
     reset: () => { publish({}); unsaved.current.clear(); setSaveStatus('saved'); },
     retrySaving: () => { for (const record of unsaved.current.values()) persist(record); },
     setScratchpadStrokes,

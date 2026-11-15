@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   CornerDownLeft,
@@ -9,7 +9,10 @@ import {
   AudioOutlined,
   BulbOutlined,
 } from '@ant-design/icons';
-import { parseSpeechToMath, isSpeechRecognitionSupported } from '../utils/speechToMath';
+import { parseSpeechToMath } from '../utils/speechToMath';
+import { MATH_SPEECH_EXAMPLES } from '../utils/mathSpeechExamples';
+import { useMathDictation } from '../hooks/useMathDictation';
+import './MathFormulaModal.css';
 
 interface MathFormulaModalProps {
   isOpen: boolean;
@@ -42,13 +45,6 @@ const MATH_CATEGORIES = [
   },
 ];
 
-const VOICE_EXAMPLES = [
-  { speech: 'căn bậc hai của x cộng 1 bằng 5', math: '√(x + 1) = 5' },
-  { speech: 'denta bằng b bình phương trừ 4ac', math: 'Δ = b² - 4ac' },
-  { speech: 'x bình phương trừ 4x cộng 3 bằng 0', math: 'x² - 4x + 3 = 0' },
-  { speech: 'suy ra x lớn hơn hoặc bằng 0', math: '⇒ x ≥ 0' },
-];
-
 export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
   isOpen,
   onClose,
@@ -57,135 +53,36 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
   isEditing = false,
 }) => {
   const [text, setText] = useState(initialText);
-  const [isListening, setIsListening] = useState(false);
-  const [interimTranscript, setInterimTranscript] = useState('');
-  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [showVoiceHelp, setShowVoiceHelp] = useState(false);
-
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<any>(null);
-  const shouldListenRef = useRef<boolean>(false);
-  const baseTextRef = useRef<string>('');
-
-  const stopListening = useCallback(() => {
-    shouldListenRef.current = false;
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {
-        // bỏ qua nếu đã dừng
-      }
-      recognitionRef.current = null;
-    }
-    setIsListening(false);
-    setInterimTranscript('');
-  }, []);
-
-  const startListening = useCallback(() => {
-    if (!isSpeechRecognitionSupported()) {
-      setVoiceError('Trình duyệt hiện tại chưa hỗ trợ Web Speech API. Vui lòng sử dụng Google Chrome hoặc Microsoft Edge.');
-      return;
-    }
-
-    setVoiceError(null);
-    baseTextRef.current = text ? text + (text.endsWith(' ') ? '' : ' ') : '';
-    shouldListenRef.current = true;
-
-    try {
-      const SpeechRecognitionClass =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const recognition = new SpeechRecognitionClass();
-
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'vi-VN';
-
-      recognition.onstart = () => {
-        setIsListening(true);
-        setVoiceError(null);
-      };
-
-      recognition.onresult = (event: any) => {
-        let finalTranscripts = '';
-        let currentInterim = '';
-
-        for (let i = 0; i < event.results.length; i++) {
-          const res = event.results[i];
-          if (res.isFinal) {
-            finalTranscripts += res[0].transcript + ' ';
-          } else {
-            currentInterim += res[0].transcript;
-          }
-        }
-
-        const fullSpeech = (finalTranscripts + currentInterim).trim();
-        setInterimTranscript(fullSpeech);
-
-        if (fullSpeech) {
-          const parsed = parseSpeechToMath(fullSpeech);
-          setText(baseTextRef.current + parsed);
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.warn('Speech recognition error:', event.error);
-        if (event.error === 'not-allowed') {
-          setVoiceError('Trình duyệt chưa được cấp quyền Microphone. Hãy bấm biểu tượng ổ khóa cạnh thanh địa chỉ để cho phép micro.');
-          stopListening();
-        } else if (event.error === 'no-speech') {
-          // Chưa nghe thấy tiếng, tiếp tục lắng nghe không tắt
-        } else if (event.error !== 'aborted') {
-          setVoiceError(`Lỗi nhận diện âm thanh: ${event.error}`);
-        }
-      };
-
-      recognition.onend = () => {
-        // Tự động khởi động lại nếu giáo viên chưa chủ động tắt (để duy trì continuous stream)
-        if (shouldListenRef.current) {
-          try {
-            recognition.start();
-          } catch {
-            setIsListening(false);
-          }
-        } else {
-          setIsListening(false);
-        }
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-    } catch (err: any) {
-      console.error('Lỗi khởi tạo SpeechRecognition:', err);
-      setVoiceError('Không thể khởi động micro. Vui lòng thử lại.');
-      setIsListening(false);
-    }
-  }, [text, stopListening]);
+  const {
+    isListening, transcript, error: voiceError, start, stop: stopListening,
+    reset, setError: setVoiceError, setTranscript,
+  } = useMathDictation(setText);
 
   const toggleListening = () => {
-    if (isListening) {
-      stopListening();
-    } else {
-      startListening();
-    }
+    if (isListening) stopListening();
+    else start(text);
   };
 
   useEffect(() => {
-    if (isOpen) {
-      setText(initialText);
-      setVoiceError(null);
-      setInterimTranscript('');
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
-      stopListening();
-    }
-    return () => {
-      stopListening();
-    };
-  }, [isOpen, initialText, stopListening]);
+    reset();
+    if (!isOpen) return;
+    setText(initialText);
+    const timer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => { clearTimeout(timer); stopListening(); };
+  }, [isOpen, initialText, reset, stopListening]);
+
+  const convertTypedSpeech = () => {
+    stopListening();
+    setTranscript(text);
+    setText(parseSpeechToMath(text));
+  };
 
   if (!isOpen) return null;
 
   const handleInsertSymbol = (sym: string) => {
+    stopListening();
     const textarea = inputRef.current;
     if (!textarea) {
       setText((prev) => prev + sym);
@@ -207,6 +104,7 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!text.trim()) return;
+    stopListening();
     onInsertFormula(text.trim());
     setText('');
     onClose();
@@ -221,7 +119,8 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-container math-formula-modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-container math-formula-modal-card" role="dialog" aria-modal="true"
+        aria-labelledby="math-formula-title" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="modal-header">
           <div className="flex items-center gap-2">
@@ -229,12 +128,12 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
               <Type size={18} className="text-primary" />
             </div>
             <div>
-              <h3 className="modal-title">
+              <h3 id="math-formula-title" className="modal-title">
                 {isEditing ? 'Chỉnh Sửa Công Thức Toán Học' : 'Chèn Công Thức & Lời Giải Toán Học'}
               </h3>
               <p className="text-xs text-muted">
                 {isEditing
-                  ? 'Chỉnh sửa trực tiếp bằng bàn phím hoặc bấm micro để nói bổ sung/thay thế'
+                  ? 'Chỉnh sửa bằng bàn phím hoặc bấm micro để nói bổ sung'
                   : 'Bấm phím ký hiệu bên dưới hoặc bấm micro để nói ra công thức tự động'}
               </p>
             </div>
@@ -253,13 +152,15 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
         <div className="modal-body math-modal-body">
           {/* Header ô nhập & Nút Mic Nói tạo công thức Realtime */}
           <div className="math-input-header flex items-center justify-between mb-1.5">
-            <label className="text-xs font-semibold text-muted">
+            <label htmlFor="math-formula-input" className="text-xs font-semibold text-muted">
               Nội dung công thức / lời giải:
             </label>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 className={`voice-mic-btn ${isListening ? 'is-listening' : ''}`}
+                aria-label={isListening ? 'Đang nghe... (Dừng)' : 'Nói ra công thức'}
+                aria-pressed={isListening}
                 onClick={toggleListening}
                 title={
                   isListening
@@ -277,6 +178,8 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
               <button
                 type="button"
                 className={`voice-help-toggle-btn ${showVoiceHelp ? 'is-active' : ''}`}
+                aria-label="Mẫu câu nói"
+                aria-expanded={showVoiceHelp}
                 onClick={() => setShowVoiceHelp(!showVoiceHelp)}
                 title="Xem các câu nói mẫu tiếng Việt để ra công thức chuẩn"
               >
@@ -288,7 +191,7 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
                 <button
                   type="button"
                   className="clear-text-mini-btn"
-                  onClick={() => setText('')}
+                  onClick={() => { reset(); setText(''); }}
                   title="Xóa trắng ô nhập liệu"
                 >
                   Xóa
@@ -311,22 +214,22 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
                 <div className="voice-listening-lead">
                   <strong>Đang nhận diện giọng nói realtime...</strong> Nói đến đâu công thức xuất hiện đến đó!
                 </div>
-                {interimTranscript ? (
-                  <div className="voice-interim-preview">
-                    Đang nghe: <em>"{interimTranscript}"</em>
-                  </div>
-                ) : (
-                  <div className="voice-listening-hint">
-                    Thử nói: "căn bậc hai của x cộng 1 bằng 5" hoặc "denta bằng b bình phương trừ 4ac"...
-                  </div>
-                )}
+                <div className="voice-listening-hint">
+                  Thử nói: “a cộng bê tất cả bình chia hai cộng ba”.
+                </div>
               </div>
+            </div>
+          )}
+
+          {transcript && (
+            <div className="voice-transcript" role="status">
+              <strong>Lời đọc gốc:</strong> <span>{transcript}</span>
             </div>
           )}
 
           {/* Thông báo lỗi Micro nếu có */}
           {voiceError && (
-            <div className="voice-error-alert">
+            <div className="voice-error-alert" role="alert">
               <span>⚠️ {voiceError}</span>
               <button
                 type="button"
@@ -342,7 +245,7 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
           {showVoiceHelp && (
             <div className="voice-help-card">
               <div className="voice-help-title flex items-center justify-between">
-                <span>💡 Hướng dẫn nói tự nhiên bằng tiếng Việt (100% tự động nhận diện):</span>
+                <span>💡 Cách đọc công thức và kết quả:</span>
                 <button
                   type="button"
                   className="voice-help-close-btn"
@@ -351,32 +254,53 @@ export const MathFormulaModal: React.FC<MathFormulaModalProps> = ({
                   Đóng
                 </button>
               </div>
-              <div className="voice-help-grid">
-                {VOICE_EXAMPLES.map((ex, idx) => (
-                  <div key={idx} className="voice-example-item">
-                    <span className="example-speech">🗣️ "{ex.speech}"</span>
-                    <span className="example-arrow">➔</span>
-                    <span className="example-math font-mono">{ex.math}</span>
-                  </div>
-                ))}
-              </div>
               <p className="voice-help-footer">
-                Hỗ trợ đầy đủ: Căn (√, ∛), Mũ (², ³, ⁿ), Ký hiệu Hy Lạp (Δ, α, β, π, θ), Bất đẳng thức (≥, ≤, ≠), Vectơ (→), Vuông góc (⊥), Song song (∥), Tích phân (∫)...
+                “a cộng b bình” → a + b²; “a cộng b tất cả bình” → (a + b)².
+                “Tất cả” gom biểu thức phía trước trong ngoặc hiện tại, sau dấu bằng hoặc dấu ngắt câu gần nhất.
+                Phép chia chỉ lấy số/hạng ngay sau nó; đọc “mở ngoặc … đóng ngoặc” nếu mẫu số có tổng.
               </p>
+              <p className="voice-help-footer">
+                “Căn x cộng một” → √x + 1; “căn của x cộng một” → √(x + 1).
+                Nói “hết căn” hoặc dùng ngoặc để kết thúc phần trong căn.
+                Nói “hoa”, “thường” để chọn chữ; nói “chỉ số” khi cần chỉ số dưới.
+                Kiểm tra bản xem trước trước khi chèn, nhất là câu có nhiều tầng ngoặc.
+              </p>
+              {Array.from(new Set(MATH_SPEECH_EXAMPLES.map(ex => ex.category))).map(category => (
+                <details key={category} className="voice-example-category">
+                  <summary>{category}</summary>
+                  <div className="voice-help-grid">
+                    {MATH_SPEECH_EXAMPLES.filter(ex => ex.category === category).map(ex => (
+                      <button key={ex.speech} type="button" className="voice-example-item"
+                        title="Điền câu mẫu để thử chuyển đổi"
+                        onClick={() => { stopListening(); setTranscript(''); setText(ex.speech); inputRef.current?.focus(); }}>
+                        <span className="example-speech">“{ex.speech}”</span>
+                        <span className="example-arrow">➔</span>
+                        <span className="example-math font-mono">{ex.math}</span>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              ))}
             </div>
           )}
 
           {/* Ô nhập công thức */}
           <div className="math-input-wrapper">
             <textarea
+              id="math-formula-input"
               ref={inputRef}
               className="math-textarea"
               rows={3}
               placeholder="Ví dụ: Ta có: f'(x) = 3x² - 6x = 0  ⇒  x = 0 hoặc x = 2 (hoặc bấm 'Nói ra công thức' ở trên)"
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => { stopListening(); setText(e.target.value); }}
               onKeyDown={handleKeyDown}
             />
+            <div className="math-convert-actions">
+              <button type="button" className="btn btn-secondary btn-sm" disabled={!text.trim()}
+                onClick={convertTypedSpeech}>Chuyển lời đọc thành công thức</button>
+              <span>Gõ câu đọc hoặc nói bằng micro; có thể sửa kết quả trước khi chèn.</span>
+            </div>
           </div>
 
           {/* Bàn phím ký hiệu Toán học */}

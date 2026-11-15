@@ -73,8 +73,15 @@ test('drawings persist per page, undo/redo persist, deletion removes associated 
   await page.getByRole('button', { name: 'Trang trước', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Xóa nét vẽ', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Đóng Toan_12_HinhHoc.pdf', exact: true }).click();
+  await expect.poll(async () => (await records(page)).length).toBe(2);
+  await expect.poll(async () => (await records(page, 'teaching_documents')).length).toBe(2);
+  await page.getByRole('button', { name: 'Quản lý tài liệu', exact: true }).click();
+  await page.locator('.sidebar-file-row').filter({ hasText: 'Toan_12_HinhHoc.pdf' }).hover();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Xóa Toan_12_HinhHoc.pdf', exact: true }).click();
   await expect.poll(async () => (await records(page)).length).toBe(0);
   await expect.poll(async () => (await records(page, 'teaching_documents')).length).toBe(1);
+  await expect.poll(async () => (await records(page, 'document_contents')).length).toBe(1);
   expect(errors).toEqual([]);
 });
 
@@ -155,12 +162,13 @@ test('version 1 database upgrades without losing document contents or reading pr
   const docs = await records(page, 'teaching_documents');
   expect(docs[0].zoom).toBe(1.45);
   expect(docs[0].rotation).toBe(90);
+  expect(docs[0].data).toBeUndefined();
   expect(await page.evaluate(() => new Promise(resolve => {
     const request = indexedDB.open('HoloTutor_Workspace_DB');
     request.onsuccess = () => {
       const db = request.result;
-      const tx = db.transaction('teaching_documents');
-      const read = tx.objectStore('teaching_documents').get('legacy');
+      const tx = db.transaction('document_contents');
+      const read = tx.objectStore('document_contents').get('legacy');
       read.onsuccess = () => resolve(Array.from(new Uint8Array(read.result.data)).slice(0, 4));
       tx.oncomplete = () => db.close();
     };
@@ -202,7 +210,7 @@ test('Word reader loads on demand and renders an uploaded document', async ({ pa
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => requests.push(request.url()));
   await page.goto('/');
-  await page.locator('input[type=file]').setInputFiles('tests/fixtures/lesson.docx');
+  await page.getByLabel('Chọn tài liệu', { exact: true }).setInputFiles('tests/fixtures/lesson.docx');
   await expect(page.locator('.docx-render-target')).toContainText('Bài học kiểm thử Kim Ngân');
   expect(requests.some(url => url.includes('docx-vendor'))).toBe(true);
   expect(requests.some(url => url.includes('pdf-vendor'))).toBe(false);

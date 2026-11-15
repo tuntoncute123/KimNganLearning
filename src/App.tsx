@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
-import type { DocumentItem, DocType, GoogleUser, DrawTool, DrawStroke } from './types/document';
+import type { DocumentItem, DocumentMetadata, GoogleUser, DrawTool, DrawStroke } from './types/document';
 import {
   getAllDocuments,
+  updateDocumentMetadata,
   getAllAnnotations,
   saveDocument,
   updateDocumentProgress,
@@ -11,8 +12,6 @@ import {
 import {
   createGoogleTokenClient,
   getGoogleUserInfo,
-  ensureStudentLessonPath,
-  uploadFileToDrive,
 } from './services/googleDriveService';
 import { Header } from './components/Header';
 import { DocumentTabBar } from './components/DocumentTabBar';
@@ -28,11 +27,26 @@ import { MeetGuideModal } from './components/MeetGuideModal';
 import { GoogleDriveSettingsModal } from './components/GoogleDriveSettingsModal';
 import { createSamplePdfBuffer, createSampleImageBuffer } from './utils/sampleGenerator';
 
+import { useDocumentContent } from './hooks/useDocumentContent';
+import { useDriveUploads } from './hooks/useDriveUploads';
+import { validateDocumentFile } from './services/fileValidation';
+import { restoreWorkspace } from './services/workspaceBackup';
+import { WorkspaceActions } from './components/WorkspaceActions';
+import { DriveUploadStatus } from './components/DriveUploadStatus';
+import { WorkspaceNavigation } from './components/WorkspaceNavigation';
+import { useApplicationRoute } from './hooks/useApplicationRoute';
+import './learning.css';
+
+const LearningPortal = lazy(() => import('./components/learning/LearningPortal'));
+
+const metadataOnly = ({ data: _data, ...metadata }: DocumentItem): DocumentMetadata => metadata;
+
 const PDFViewer = lazy(() => import('./components/PDFViewer').then((module) => ({ default: module.PDFViewer })));
 const WordViewer = lazy(() => import('./components/WordViewer').then((module) => ({ default: module.WordViewer })));
 
 export const App: React.FC = () => {
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const route = useApplicationRoute();
+  const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
@@ -70,7 +84,12 @@ export const App: React.FC = () => {
 
   const [isRestoring, setIsRestoring] = useState(true);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const importLock = useRef(false);
+  const [taskMessage, setTaskMessage] = useState<string | null>(null);
+  const openDocuments = documents.filter(doc => doc.isOpen !== false);
   const activeDoc = documents.find((doc) => doc.id === activeId) || null;
+  const content = useDocumentContent(forceShowHome ? null : activeId);
   const annotations = useAnnotations(activeDoc?.id || null, activeDoc?.currentPage || 1);
   const {
     currentPageStrokes, scratchpadStrokes, setScratchpadStrokes,
@@ -81,6 +100,18 @@ export const App: React.FC = () => {
     console.error('Lỗi lưu trữ:', error);
     setStorageError('Không thể lưu thay đổi trên thiết bị. Hãy kiểm tra dung lượng trống và quyền lưu trữ của trình duyệt.');
   }, []);
+
+  const reportTaskError = useCallback((error: unknown) => {
+    setTaskMessage(error instanceof Error ? error.message : 'Không thể hoàn tất thao tác. Hãy thử lại.');
+  }, []);
+  const updateDriveDocument = useCallback((id: string, patch: Partial<DocumentMetadata>) => {
+    setDocuments(previous => previous.map(doc => doc.id === id ? { ...doc, ...patch } : doc));
+  }, []);
+  const handleTokenExpired = useCallback(() => {
+    setGoogleAccessToken(null); setGoogleUser(null);
+    setDriveErrorMsg('Phiên Google đã hết hạn. Hãy đăng nhập lại rồi thử tải lại.');
+  }, []);
+  const uploads = useDriveUploads(googleAccessToken, updateDriveDocument, handleTokenExpired, reportStorageError);
 
   const appContainerRef = useRef<HTMLDivElement>(null);
   const fitScaleRef = useRef<number>(1.0);
@@ -104,10 +135,13 @@ export const App: React.FC = () => {
         const [saved, drawings] = await Promise.all([getAllDocuments(), getAllAnnotations()]);
         if (cancelled) return;
         hydrate(drawings);
-        setDocuments(saved);
-        if (saved.length > 0) {
-          const mostRecent = [...saved].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)[0];
-          setActiveId(mostRecent ? mostRecent.id : saved[0].id);
+        const recovered = saved.map(doc => ['queued', 'uploading'].includes(doc.driveStatus || '')
+          ? { ...doc, driveStatus: 'error' as const, driveError: 'Lần tải trước bị gián đoạn. Hãy thử tải lại.' } : doc);
+        setDocuments(recovered);
+        const opened = saved.filter(doc => doc.isOpen !== false);
+        if (opened.length > 0) {
+          const mostRecent = [...opened].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)[0];
+          setActiveId(mostRecent.id);
         }
       } catch (err) {
         if (!cancelled) setStorageError(err instanceof Error ? err.message : 'Không thể khôi phục tài liệu trên thiết bị.');
@@ -201,111 +235,63 @@ export const App: React.FC = () => {
     setSelectedStrokeId(null);
     const now = Date.now();
     setDocuments((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, lastOpenedAt: now } : d))
+      prev.map((d) => (d.id === id ? { ...d, lastOpenedAt: now, isOpen: true } : d))
     );
-    void updateDocumentProgress(id, { lastOpenedAt: now }).catch(reportStorageError);
+    void updateDocumentProgress(id, { lastOpenedAt: now, isOpen: true }).catch(reportStorageError);
   }, [reportStorageError]);
 
-  // 9. Xử lý tải file lên
-  const handleFilesSelected = async (
-    files: FileList | File[],
-    studentName: string,
-    lessonName: string
-  ) => {
+  const handleCloseDoc = (id: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setDocuments(previous => previous.map(doc => doc.id === id ? { ...doc, isOpen: false } : doc));
+    setActiveId(current => current === id ? openDocuments.filter(doc => doc.id !== id).at(-1)?.id || null : current);
+    setSelectedStrokeId(null);
+    void updateDocumentMetadata(id, { isOpen: false }).catch(reportStorageError);
+  };
+
+  const handleFilesSelected = async (files: FileList | File[], studentName: string, lessonName: string) => {
+    if (importLock.current) return;
     const fileArray = Array.from(files);
-    if (fileArray.length === 0) return;
-
-    setCurrentStudentName(studentName);
-    setCurrentLessonName(lessonName);
-
-    let driveTargetFolderId: string | null = null;
-    let driveTargetFolderPath: string | null = null;
-
-    if (googleAccessToken) {
-      try {
-        const folderResult = await ensureStudentLessonPath(
-          studentName,
-          lessonName,
-          googleAccessToken
-        );
-        driveTargetFolderId = folderResult.folderId;
-        driveTargetFolderPath = folderResult.folderPath;
-      } catch (err) {
-        console.error('Lỗi khi tạo/tìm thư mục trên Google Drive:', err);
-      }
-    }
-
-    const newDocs: DocumentItem[] = [];
-
-    for (const file of fileArray) {
-      try {
-        const buffer = await file.arrayBuffer();
-        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-        const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
-        const isWord = file.name.toLowerCase().endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-
-        if (!isPdf && !isImage && !isWord) {
-          alert(`File "${file.name}" không được hỗ trợ. Vui lòng chọn file PDF, Word (.docx) hoặc Hình ảnh.`);
-          continue;
+    if (!fileArray.length) return;
+    importLock.current = true; setIsImporting(true); setTaskMessage(null);
+    setCurrentStudentName(studentName); setCurrentLessonName(lessonName);
+    const errors: string[] = [];
+    try {
+      for (const file of fileArray) {
+        try {
+          const format = await validateDocumentFile(file);
+          const buffer = await file.arrayBuffer();
+          const doc: DocumentItem = {
+            id: crypto.randomUUID(), name: file.name, ...format, size: buffer.byteLength, data: buffer,
+            createdAt: Date.now(), lastOpenedAt: Date.now(), currentPage: 1, totalPages: 1,
+            zoom: 1, rotation: 0, isOpen: true, studentName: studentName.trim() || undefined,
+            lessonName: lessonName.trim() || undefined,
+            driveStatus: googleAccessToken ? 'queued' : undefined,
+          };
+          await saveDocument(doc);
+          setDocuments(previous => [...previous, metadataOnly(doc)]);
+          setActiveId(doc.id); setForceShowHome(false);
+          if (googleAccessToken) uploads.enqueue(doc.id);
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : `Không thể lưu “${file.name}”.`);
         }
-
-        const docType: DocType = isPdf ? 'pdf' : isWord ? 'word' : 'image';
-        const docMimeType = file.type || (
-          isPdf ? 'application/pdf' :
-          isWord ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' :
-          'image/png'
-        );
-
-        let driveFileId: string | undefined;
-        let driveWebViewLink: string | undefined;
-
-        if (googleAccessToken && driveTargetFolderId) {
-          try {
-            const driveUpload = await uploadFileToDrive(
-              { name: file.name, mimeType: docMimeType, data: buffer },
-              driveTargetFolderId,
-              googleAccessToken
-            );
-            driveFileId = driveUpload.id;
-            driveWebViewLink = driveUpload.webViewLink;
-          } catch (err) {
-            console.error(`Không thể lưu file "${file.name}" lên Drive:`, err);
-          }
-        }
-
-        const docItem: DocumentItem = {
-          id: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          name: file.name,
-          type: docType,
-          mimeType: docMimeType,
-          size: file.size,
-          data: buffer,
-          createdAt: Date.now(),
-          lastOpenedAt: Date.now(),
-          currentPage: 1,
-          totalPages: 1,
-          zoom: 1.0,
-          rotation: 0,
-          studentName: studentName.trim() || undefined,
-          lessonName: lessonName.trim() || undefined,
-          driveFileId,
-          driveFolderId: driveTargetFolderId || undefined,
-          driveFolderPath: driveTargetFolderPath || undefined,
-          driveWebViewLink,
-        };
-
-        await saveDocument(docItem);
-        newDocs.push(docItem);
-      } catch (err) {
-        reportStorageError(err);
       }
+    } finally {
+      importLock.current = false; setIsImporting(false);
+      if (errors.length) setTaskMessage(errors.join(' '));
     }
+  };
 
-    if (newDocs.length > 0) {
-      setDocuments((prev) => [...prev, ...newDocs]);
-      setActiveId(newDocs[newDocs.length - 1].id);
-      setForceShowHome(false);
-    }
+  const handleRestoreWorkspace = async (file: File) => {
+    if (importLock.current) return;
+    importLock.current = true; setIsRestoring(true);
+    try {
+      const count = await restoreWorkspace(file);
+      const [saved, drawings] = await Promise.all([getAllDocuments(), getAllAnnotations()]);
+      hydrate(drawings); setDocuments(saved);
+      const opened = saved.filter(doc => doc.isOpen !== false);
+      setActiveId(opened.at(-1)?.id || null); setForceShowHome(false);
+      setTaskMessage(`Đã nhập ${count} tài liệu và ghi chú. Các tài liệu có sẵn vẫn được giữ.`);
+    } finally { importLock.current = false; setIsRestoring(false); }
   };
 
   // 10. Xóa 1 tài liệu
@@ -313,10 +299,11 @@ export const App: React.FC = () => {
     if (e) e.stopPropagation();
     try {
       await annotations.flush();
+      uploads.cancel(id);
       await deleteDocument(id);
       annotations.forgetDocument(id);
       setDocuments((prev) => prev.filter((doc) => doc.id !== id));
-      setActiveId((current) => current === id ? (documents.filter((doc) => doc.id !== id).at(-1)?.id || null) : current);
+      setActiveId((current) => current === id ? (openDocuments.filter((doc) => doc.id !== id).at(-1)?.id || null) : current);
     } catch (err) {
       reportStorageError(err);
     }
@@ -326,6 +313,7 @@ export const App: React.FC = () => {
   const handleClearAll = async () => {
     try {
       await annotations.flush();
+      uploads.cancel();
       await clearAllDocuments();
       annotations.reset();
       setDocuments([]);
@@ -388,7 +376,7 @@ export const App: React.FC = () => {
       await saveDocument(samplePdf);
       await saveDocument(sampleImg);
 
-      setDocuments((previous) => [...previous, samplePdf, sampleImg]);
+      setDocuments((previous) => [...previous, metadataOnly(samplePdf), metadataOnly(sampleImg)]);
       setForceShowHome(false);
       setActiveId(samplePdf.id);
     } catch (err) {
@@ -492,6 +480,7 @@ export const App: React.FC = () => {
   // Phím tắt Undo / Redo toàn cục
   useEffect(() => {
     const handleKeyShortcut = (e: KeyboardEvent) => {
+      if (route.page !== 'workspace') return;
       if ((e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable], [role="dialog"], .modal-backdrop')) return;
       if (e.ctrlKey || e.metaKey) {
         if (e.key === 'z' || e.key === 'Z') {
@@ -513,8 +502,27 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyShortcut);
   });
 
+  const beforeNavigate = async () => {
+    try { await annotations.flush(); return true; }
+    catch (error) { reportTaskError(error); return false; }
+  };
+
+  if (route.page !== 'workspace') return (
+    <div ref={appContainerRef} className="app-workspace-root">
+      <WorkspaceNavigation page={route.page} beforeNavigate={beforeNavigate} />
+      <Suspense fallback={<div className="viewer-state-message" role="status">Đang mở không gian học tập…</div>}>
+        <LearningPortal key={route.page} role={route.page} section={route.section} documents={documents}
+          theme={theme} onToggleTheme={toggleTheme} onOpenDocument={id => {
+            handleSelectDoc(id);
+            window.location.hash = '/workspace';
+          }} />
+      </Suspense>
+    </div>
+  );
+
   return (
     <div ref={appContainerRef} className={`app-workspace-root ${isFullscreen ? 'is-fullscreen-mode' : ''}`}>
+      <WorkspaceNavigation page="workspace" beforeNavigate={beforeNavigate} />
       {/* 1. Header trên cùng */}
       <Header
         theme={theme}
@@ -548,13 +556,22 @@ export const App: React.FC = () => {
         </div>
       )}
 
+      {taskMessage && <div className="workspace-storage-alert" role="alert">
+        <span>{taskMessage}</span><button aria-label="Đóng kết quả thao tác" onClick={() => setTaskMessage(null)}>×</button>
+      </div>}
+      {isImporting && <div className="workspace-save-status">Đang lưu tài liệu trên thiết bị…</div>}
+      <WorkspaceActions activeDoc={!forceShowHome && content?.data ? activeDoc : null}
+        disabled={isRestoring || isImporting} flush={annotations.flush} onRestore={handleRestoreWorkspace} onError={reportTaskError} />
+      <DriveUploadStatus documents={documents} connected={!!googleAccessToken} onRetry={uploads.enqueue}
+        onConnect={() => setIsDriveSettingsOpen(true)} />
+
       {/* 2. Thanh tab ngang chuyển tài liệu tức thì */}
       {documents.length > 0 && (
         <DocumentTabBar
-          documents={documents}
+          documents={openDocuments}
           activeId={activeId}
           onSelectDoc={handleSelectDoc}
-          onCloseDoc={handleDeleteDoc}
+          onCloseDoc={handleCloseDoc}
           onOpenUpload={() => setIsUploadModalOpen(true)}
           onToggleSidebar={() => setIsSidebarOpen(true)}
           isSidebarOpen={isSidebarOpen}
@@ -595,8 +612,9 @@ export const App: React.FC = () => {
       >
         {isRestoring ? (
           <div className="viewer-state-message" role="status">Đang khôi phục tài liệu và nét vẽ…</div>
-        ) : documents.length === 0 || forceShowHome ? (
+        ) : !activeDoc || forceShowHome ? (
           <EmptyState
+            busy={isImporting}
             onFilesSelected={(files, sn, ln) => {
               setForceShowHome(false);
               handleFilesSelected(files, sn, ln);
@@ -615,11 +633,14 @@ export const App: React.FC = () => {
             {/* Cột bên trái: Tài liệu bài học gốc (PDF hoặc Ảnh) */}
             <div className="active-viewer-container">
               <Suspense fallback={<div className="viewer-state-message" role="status">Đang tải bộ đọc tài liệu…</div>}>
-              {activeDoc.type === 'pdf' ? (
+              {content?.error ? <div className="viewer-error-box" role="alert">{content.error}</div>
+                : !content?.data ? <div className="viewer-state-message">Đang đọc tài liệu…</div>
+                : activeDoc.type === 'pdf' ? (
                 <PDFViewer
                   key={activeDoc.id}
                   documentId={activeDoc.id}
-                  data={activeDoc.data}
+                  data={content!.data!}
+                  annotationBasis={annotations.basis}
                   currentPage={activeDoc.currentPage || 1}
                   zoom={activeDoc.zoom || 1.0}
                   rotation={activeDoc.rotation || 0}
@@ -641,7 +662,8 @@ export const App: React.FC = () => {
                 <WordViewer
                   key={activeDoc.id}
                   documentId={activeDoc.id}
-                  data={activeDoc.data}
+                  data={content!.data!}
+                  annotationBasis={annotations.basis}
                   zoom={activeDoc.zoom || 1.0}
                   rotation={activeDoc.rotation || 0}
                   isLaserActive={isLaserActive}
@@ -661,7 +683,8 @@ export const App: React.FC = () => {
                 <ImageViewer
                   key={activeDoc.id}
                   documentId={activeDoc.id}
-                  data={activeDoc.data}
+                  data={content!.data!}
+                  annotationBasis={annotations.basis}
                   mimeType={activeDoc.mimeType}
                   zoom={activeDoc.zoom || 1.0}
                   rotation={activeDoc.rotation || 0}
@@ -732,6 +755,7 @@ export const App: React.FC = () => {
 
       {/* 5. Drawer quản lý toàn bộ kho tài liệu (Cây thư mục) */}
       <DocumentSidebar
+        busy={isImporting || isRestoring}
         isOpen={isSidebarOpen}
         documents={documents}
         activeId={activeId}
@@ -755,6 +779,7 @@ export const App: React.FC = () => {
       {/* 6. Modal tải thêm tài liệu */}
       {isUploadModalOpen && (
         <EmptyState
+          busy={isImporting}
           isModal={true}
           onCloseModal={() => setIsUploadModalOpen(false)}
           onFilesSelected={handleFilesSelected}

@@ -1,11 +1,13 @@
+import { pointerToDocument } from '../drawing/coordinates';
 import React, { useState, useEffect, useRef } from 'react';
 
 interface LaserPointerProps {
   active: boolean;
+  rotation?: number;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-export const LaserPointer: React.FC<LaserPointerProps> = ({ active }) => {
+export const LaserPointer: React.FC<LaserPointerProps> = ({ active, rotation = 0 }) => {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [trail, setTrail] = useState<{ x: number; y: number; id: number }[]>([]);
   const trailIdRef = useRef(0);
@@ -33,8 +35,7 @@ export const LaserPointer: React.FC<LaserPointerProps> = ({ active }) => {
         clientY <= rect.bottom
       ) {
         // Tọa độ CHÍNH XÁC tương đối với container chứa LaserPointer (rootRef)
-        const x = clientX - rect.left;
-        const y = clientY - rect.top;
+        const { x, y } = pointerToDocument({ x: clientX, y: clientY }, rect, container.offsetWidth, container.offsetHeight, rotation);
         setPos({ x, y });
 
         // Tạo hiệu ứng vệt sáng mờ đuôi laser
@@ -72,7 +73,7 @@ export const LaserPointer: React.FC<LaserPointerProps> = ({ active }) => {
       window.removeEventListener('scroll', handleScroll, true);
       document.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [active]);
+  }, [active, rotation]);
 
   if (!active) return null;
 

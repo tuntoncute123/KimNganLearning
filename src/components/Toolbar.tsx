@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -45,11 +45,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToggleLaser,
   onToggleFullscreen,
 }) => {
-  const [inputPage, setInputPage] = useState<string>(String(currentPage));
-
-  useEffect(() => {
-    setInputPage(String(currentPage));
-  }, [currentPage]);
+  const [draft, setDraft] = useState<{ page: number; text: string } | null>(null);
+  const inputPage = draft?.page === currentPage ? draft.text : String(currentPage);
+  const setInputPage = (text: string) => setDraft({ page: currentPage, text });
 
   const handlePageSubmit = (e: React.FormEvent) => {
     e.preventDefault();

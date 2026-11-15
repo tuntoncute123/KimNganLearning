@@ -1,5 +1,14 @@
 import type { GoogleUser } from '../types/document';
 
+export class DriveAuthError extends Error {}
+
+async function driveFetch(url: string, init: RequestInit, signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(60_000);
+  const response = await fetch(url, { ...init, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+  if (response.status === 401) throw new DriveAuthError('Phiên Google đã hết hạn. Hãy đăng nhập lại rồi thử tải lại.');
+  return response;
+}
+
 declare global {
   interface Window {
     google?: {
@@ -26,20 +35,21 @@ const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 export async function findOrCreateFolder(
   folderName: string,
   parentId: string | null,
-  accessToken: string
+  accessToken: string,
+  signal?: AbortSignal
 ): Promise<string> {
   // 1. Tìm kiếm xem thư mục đã tồn tại hay chưa
-  let query = `name = '${folderName.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+  let query = `name = '${folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
   if (parentId) {
     query += ` and '${parentId}' in parents`;
   }
 
   const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id, name)&spaces=drive`;
-  const searchRes = await fetch(searchUrl, {
+  const searchRes = await driveFetch(searchUrl, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
-  });
+  }, signal);
 
   if (!searchRes.ok) {
     const errText = await searchRes.text();
@@ -61,14 +71,14 @@ export async function findOrCreateFolder(
     meta.parents = [parentId];
   }
 
-  const createRes = await fetch(createUrl, {
+  const createRes = await driveFetch(createUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(meta),
-  });
+  }, signal);
 
   if (!createRes.ok) {
     const errText = await createRes.text();
@@ -86,19 +96,20 @@ export async function findOrCreateFolder(
 export async function ensureStudentLessonPath(
   studentName: string,
   lessonName: string,
-  accessToken: string
+  accessToken: string,
+  signal?: AbortSignal
 ): Promise<{ folderId: string; folderPath: string }> {
   const cleanStudent = studentName.trim() || 'Học sinh chung';
   const cleanLesson = lessonName.trim() || 'Buổi học';
 
   // 1. Thư mục gốc HoloTutor Materials
-  const rootId = await findOrCreateFolder(DRIVE_ROOT_FOLDER_NAME, null, accessToken);
+  const rootId = await findOrCreateFolder(DRIVE_ROOT_FOLDER_NAME, null, accessToken, signal);
 
   // 2. Thư mục Học sinh
-  const studentFolderId = await findOrCreateFolder(cleanStudent, rootId, accessToken);
+  const studentFolderId = await findOrCreateFolder(cleanStudent, rootId, accessToken, signal);
 
   // 3. Thư mục Buổi học
-  const lessonFolderId = await findOrCreateFolder(cleanLesson, studentFolderId, accessToken);
+  const lessonFolderId = await findOrCreateFolder(cleanLesson, studentFolderId, accessToken, signal);
 
   const folderPath = `${DRIVE_ROOT_FOLDER_NAME} / ${cleanStudent} / ${cleanLesson}`;
   return { folderId: lessonFolderId, folderPath };
@@ -110,7 +121,8 @@ export async function ensureStudentLessonPath(
 export async function uploadFileToDrive(
   fileData: { name: string; mimeType: string; data: ArrayBuffer },
   folderId: string,
-  accessToken: string
+  accessToken: string,
+  signal?: AbortSignal
 ): Promise<{ id: string; name: string; webViewLink?: string; size?: number }> {
   const metadata = {
     name: fileData.name,
@@ -139,13 +151,13 @@ export async function uploadFileToDrive(
 
   const uploadUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,size';
 
-  const res = await fetch(uploadUrl, {
+  const res = await driveFetch(uploadUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
     body: multipartBlob,
-  });
+  }, signal);
 
   if (!res.ok) {
     const errText = await res.text();

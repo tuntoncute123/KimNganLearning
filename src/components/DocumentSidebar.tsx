@@ -17,11 +17,12 @@ import {
   BookOpen,
   User,
 } from 'lucide-react';
-import type { DocumentItem } from '../types/document';
+import type { DocumentMetadata } from '../types/document';
 
 interface DocumentSidebarProps {
+  busy?: boolean;
   isOpen: boolean;
-  documents: DocumentItem[];
+  documents: DocumentMetadata[];
   activeId: string | null;
   onClose: () => void;
   onSelectDoc: (id: string) => void;
@@ -39,12 +40,12 @@ interface FolderNode {
   studentName: string;
   lessons: {
     lessonName: string;
-    docs: DocumentItem[];
+    docs: DocumentMetadata[];
   }[];
 }
 
-function buildTree(docs: DocumentItem[]): FolderNode[] {
-  const studentMap: Record<string, Record<string, DocumentItem[]>> = Object.create(null);
+function buildTree(docs: DocumentMetadata[]): FolderNode[] {
+  const studentMap: Record<string, Record<string, DocumentMetadata[]>> = Object.create(null);
 
   for (const doc of docs) {
     const student = doc.studentName?.trim() || 'Chưa phân loại';
@@ -76,7 +77,7 @@ function formatBytes(bytes: number): string {
 // Sub-component: File row
 // ========================
 const FileRow: React.FC<{
-  doc: DocumentItem;
+  doc: DocumentMetadata;
   isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
@@ -144,6 +145,7 @@ const FileRow: React.FC<{
             }
           }}
           title="Xóa tài liệu"
+          aria-label={`Xóa ${doc.name}`}
         >
           <Trash2 size={13} />
         </button>
@@ -157,7 +159,7 @@ const FileRow: React.FC<{
 // ========================
 const LessonFolder: React.FC<{
   lessonName: string;
-  docs: DocumentItem[];
+  docs: DocumentMetadata[];
   activeId: string | null;
   onSelectDoc: (id: string) => void;
   onDeleteDoc: (id: string) => void;
@@ -254,6 +256,7 @@ const StudentFolder: React.FC<{
 // Main Component
 // ========================
 export const DocumentSidebar: React.FC<DocumentSidebarProps> = ({
+  busy = false,
   isOpen,
   documents,
   activeId,
@@ -366,6 +369,7 @@ export const DocumentSidebar: React.FC<DocumentSidebarProps> = ({
             <button
               type="button"
               className="btn-danger-outline btn-sm w-full"
+              disabled={busy}
               onClick={() => {
                 if (
                   confirm(

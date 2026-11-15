@@ -1,18 +1,21 @@
 export type DocType = 'pdf' | 'image' | 'word';
 
-export interface DocumentItem {
+export interface DocumentMetadata {
   id: string;
   name: string;
   type: DocType;
   mimeType: string;
   size: number;
-  data: ArrayBuffer;
   createdAt: number;
   lastOpenedAt: number;
   currentPage: number;
   totalPages: number;
   zoom: number; // Tỉ lệ zoom (1 = 100%, 1.25 = 125%, ...)
   rotation: number; // 0, 90, 180, 270 độ
+
+  isOpen?: boolean;
+  driveStatus?: 'queued' | 'uploading' | 'synced' | 'error' | 'auth-required';
+  driveError?: string;
 
   // Metadata Google Drive
   driveFileId?: string;
@@ -91,3 +94,9 @@ export interface DrawStroke {
   fontSize?: number;
   isDashed?: boolean;
 }
+
+export interface DocumentItem extends DocumentMetadata {
+  data: ArrayBuffer;
+}
+
+export interface AnnotationBasis { zoom: number; rotation: number }

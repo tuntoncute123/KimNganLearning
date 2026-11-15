@@ -46,7 +46,7 @@ interface MathDrawingToolbarProps {
   onOpenMathFormulaModal: () => void;
 }
 
-export const MATH_SHAPES_2D: { tool: DrawTool; label: string; icon: React.ReactNode }[] = [
+const MATH_SHAPES_2D: { tool: DrawTool; label: string; icon: React.ReactNode }[] = [
   { tool: 'line', label: 'Đoạn thẳng', icon: <Minus size={16} /> },
   { tool: 'dashed-line', label: 'Nét đứt (Đường cao)', icon: <span style={{ fontWeight: 'bold', fontSize: '13px' }}>- - -</span> },
   { tool: 'arrow', label: 'Mũi tên (Vectơ)', icon: <MoveRight size={16} /> },
@@ -57,7 +57,7 @@ export const MATH_SHAPES_2D: { tool: DrawTool; label: string; icon: React.ReactN
   { tool: 'coordinate-axes', label: 'Hệ trục toạ độ Oxy', icon: <Grid2X2 size={16} /> },
 ];
 
-export const MATH_SHAPES_3D: { tool: DrawTool; label: string; icon: React.ReactNode }[] = [
+const MATH_SHAPES_3D: { tool: DrawTool; label: string; icon: React.ReactNode }[] = [
   { tool: 'pyramid-3d', label: 'Hình chóp tứ giác S.ABCD', icon: <Pyramid size={16} /> },
   { tool: 'tetrahedron-3d', label: 'Tứ diện / Chóp tam giác S.ABC', icon: <Shapes size={16} /> },
   { tool: 'cube-3d', label: 'Hình hộp / Lập phương 3D', icon: <Box size={16} /> },
@@ -66,7 +66,7 @@ export const MATH_SHAPES_3D: { tool: DrawTool; label: string; icon: React.ReactN
   { tool: 'sphere-3d', label: 'Hình cầu 3D (Xích đạo)', icon: <Globe size={16} /> },
 ];
 
-export const ALL_MATH_SHAPES = [...MATH_SHAPES_2D, ...MATH_SHAPES_3D];
+const ALL_MATH_SHAPES = [...MATH_SHAPES_2D, ...MATH_SHAPES_3D];
 
 const PEDAGOGICAL_COLORS = [
   { value: '#ef4444', label: 'Đỏ (Sửa bài)' },

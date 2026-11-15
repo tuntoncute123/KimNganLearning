@@ -37,7 +37,7 @@ Nếu xuất hiện nhu cầu server rõ ràng, nên triển khai một luồng 
 - Dùng PDF worker cùng phiên bản từ dependency; hủy render cũ, giải phóng loading task khi chuyển tài liệu và tính lại fit-width khi vùng đọc đổi kích thước.
 - Sửa thứ tự Hooks trong kho tài liệu; sửa chuyển từ màn hình chính qua tab; thêm bộ mẫu không làm biến mất tài liệu đang có.
 
-## Giới hạn còn lại
+## Giới hạn tại thời điểm đánh giá ban đầu
 
 - Nét vẽ và bảng nháp chỉ lưu trên thiết bị/browser hiện tại; chưa được nhúng vào file hay đồng bộ lên Google Drive. Dữ liệu có thể mất nếu người dùng xóa dữ liệu website.
 - Undo/redo không khôi phục qua lần tải lại trang; nét vẽ cuối cùng có khôi phục.
@@ -49,8 +49,24 @@ Nếu xuất hiện nhu cầu server rõ ràng, nên triển khai một luồng 
 - [Next.js: Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components): khi nào cần browser API và tương tác phía client, lợi ích của phần chạy server.
 - [Next.js: Static exports](https://nextjs.org/docs/app/guides/static-exports): hosting tĩnh, prerender và các tính năng không được hỗ trợ khi xuất tĩnh.
 
-## Kết quả kiểm chứng
+## Kết quả kiểm chứng trước đợt cải tiến tiếp theo
 
 Build TypeScript/Vite thành công. Lint có 0 lỗi và 19 cảnh báo còn lại. 7/7 bài kiểm thử Chromium đã đạt trên production preview, bao phủ tải thư viện theo nhu cầu, đọc PDF/Word, mở/đóng kho tài liệu, chuyển trang nhanh, lưu nét vẽ từng trang, undo/redo, tải lại, bảng nháp, xóa dữ liệu, nâng cấp database v1 và giao dịch bị hủy rồi thử lưu lại. Chưa kiểm chứng OAuth/Drive bằng tài khoản thật.
 
 JavaScript tải ban đầu giảm từ khoảng 953 kB xuống 350 kB (chưa nén, tính các asset JS của bản build; giảm khoảng 63%). Đây là số đo dung lượng gói, không phải cam kết thời gian tải hay FPS. Thư viện PDF/Word vẫn được tải khi mở tài liệu tương ứng.
+
+
+## Cập nhật sau đợt cải tiến workspace
+
+- Đóng tab được tách khỏi xóa tài liệu, trạng thái mở/đóng được lưu lại.
+- Database v3 tách metadata và nội dung file; chỉ tài liệu đang mở được tải vào state. Migration và nhập bản sao lưu dùng giao dịch nguyên tử.
+- Nội dung và nét vẽ nằm cùng một mặt phẳng, biến đổi zoom/xoay chung. Tọa độ pointer được đổi ngược về mặt phẳng này. Dữ liệu v2 dùng mức zoom/xoay cuối đã lưu làm hệ tham chiếu; không suy ra được zoom lịch sử của từng nét đã lệch trước đó.
+- File được lưu cục bộ trước khi tải Drive. Hàng đợi, lỗi từng file, yêu cầu đăng nhập lại và thử lại có phản hồi trên giao diện.
+- Có sao lưu/nhập workspace; xuất PNG và in/lưu PDF cho trang PDF hoặc ảnh đang xem; in toàn bộ Word kèm ghi chú. Xuất toàn bộ PDF nhiều trang thành file mới chưa được triển khai.
+- Phần hình học, phép biến đổi tọa độ, render nét và tương tác pointer đã được tách module. Kiểm thử bổ sung bao phủ tọa độ, sao lưu, rollback, xuất ảnh và lỗi Drive giả lập. Hướng dẫn chạy trên Chromium/Firefox/WebKit ở README.
+
+Giới hạn còn giữ: chưa đồng bộ nét vẽ lên Drive; chưa hỗ trợ nhiều người cùng sửa; chưa là ứng dụng offline đầy đủ; undo/redo không khôi phục qua lần tải lại trang. OAuth với tài khoản thật và bút cảm ứng trên thiết bị vật lý cần kiểm tra trong môi trường sử dụng.
+
+### Kiểm chứng đợt cải tiến
+
+Bản production đã build thành công. 22 kịch bản chạy trên Chromium, Firefox và WebKit: **64 lượt đạt, 2 lượt bỏ qua** (luồng touch qua CDP chỉ chạy Chromium). Kiểm tra trên Linux dùng cấu hình tạm với preview cổng 4182 và thư viện hệ thống giải nén trong `/tmp`; không thay đổi cấu hình máy hay tài khoản Drive. Đã kiểm tra giao diện desktop 1440×1000 và tablet 700×900. Drive dùng phản hồi giả lập; phần in kiểm tra nội dung chuẩn bị cho hộp thoại in, không kiểm tra máy in vật lý. Phần workspace còn 3 cảnh báo lint về state trong effect ở LaserPointer, ImageViewer và MathFormulaModal.

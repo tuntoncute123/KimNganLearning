@@ -1,0 +1,105 @@
+.math-formula-modal-card {
+  max-height: calc(100dvh - 40px);
+}
+
+.math-formula-modal-card .modal-header,
+.math-formula-modal-card .modal-footer {
+  flex-shrink: 0;
+}
+
+.math-formula-modal-card .math-modal-body {
+  min-height: 0;
+}
+
+.math-formula-modal-card .math-modal-body > * {
+  flex-shrink: 0;
+}
+
+.math-formula-modal-card .voice-help-card {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.math-formula-modal-card .voice-help-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.math-formula-modal-card .voice-help-footer {
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.math-formula-modal-card .math-input-header {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.voice-transcript {
+  padding: 10px 12px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.math-convert-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.math-convert-actions > span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.voice-example-category summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 0;
+}
+
+.voice-example-category .voice-help-grid {
+  grid-template-columns: 1fr;
+}
+
+.voice-example-category .voice-example-item {
+  text-align: left;
+  cursor: pointer;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.voice-example-category .voice-example-item:hover,
+.voice-example-category .voice-example-item:focus-visible {
+  border-color: var(--brand-primary);
+}
+
+.voice-example-category .example-math {
+  max-width: 45%;
+}
+
+.math-formula-modal-card .preview-rendered-math {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 540px) {
+  .math-formula-modal-card .modal-header,
+  .math-formula-modal-card .modal-body,
+  .math-formula-modal-card .modal-footer { padding: 12px; }
+  .math-formula-modal-card .modal-footer { flex-wrap: wrap; gap: 8px; }
+  .voice-example-category .voice-example-item { flex-wrap: wrap; }
+  .voice-example-category .example-speech { flex-basis: 100%; }
+  .voice-example-category .example-math { max-width: 100%; }
+}

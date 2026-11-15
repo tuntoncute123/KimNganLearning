@@ -1,0 +1,95 @@
+/* Schedule styling follows the day/week board and student cards in XuanAnEnglish. */
+.learning-schedule {
+  --schedule-ink: #293b35;
+  --schedule-muted: #68766c;
+  --schedule-green: #35775c;
+  --schedule-border: #e3e9df;
+  --schedule-paper: #fff;
+  --schedule-soft: #f5f8f2;
+  --schedule-today: #f5faf1;
+  color: var(--schedule-ink);
+}
+.learning-schedule .learning-panel-heading h2 { font-weight: 650; letter-spacing: -.5px; }
+.learning-schedule .learning-panel-heading p, .schedule-list-count { color: var(--schedule-muted); }
+.learning-schedule .learning-primary { background: #397759; border-color: #397759; font-weight: 600 !important; }
+.learning-schedule .learning-primary:hover:not(:disabled) { background: #2b6046; }
+.learning-schedule .learning-secondary { color: var(--schedule-ink); background: var(--schedule-paper); border-color: var(--schedule-border); font-weight: 500 !important; }
+.learning-schedule :focus-visible { outline-color: #8eb39b; }
+.schedule-board { background: var(--schedule-paper); border: 1px solid var(--schedule-border); border-radius: 11px; overflow: hidden; }
+.schedule-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 23px 24px; }
+.schedule-heading h3 { font-size: 16px; font-weight: 600; }
+.schedule-heading p { margin-top: 7px; color: var(--schedule-muted); font-size: 12px; line-height: 1.7; }
+.schedule-mode { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--schedule-border); background: var(--schedule-soft); border-radius: 9px; }
+.schedule-mode button { border: 0; background: transparent; color: var(--schedule-muted); border-radius: 6px; padding: 9px 14px; font-size: 12px; min-height: 36px; }
+.schedule-mode button[aria-pressed='true'] { background: var(--schedule-paper); color: var(--schedule-green); box-shadow: 0 1px 5px #26483215; font-weight: 600; }
+.schedule-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 0 24px 20px; }
+.schedule-navigation input { color: var(--schedule-ink); background: var(--schedule-paper); border-color: var(--schedule-border); padding: 9px; font-size: 12px; }
+.schedule-icon-button { border: 1px solid var(--schedule-border); background: var(--schedule-paper); color: var(--schedule-muted); border-radius: 7px; display: grid; place-items: center; width: 36px; height: 38px; }
+.schedule-icon-button:hover, .schedule-mode button:hover { background: var(--schedule-soft); }
+.schedule-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--schedule-border); }
+.schedule-day { min-width: 0; padding: 14px 8px; border-right: 1px solid var(--schedule-border); }
+.schedule-day:last-child { border-right: 0; }
+.schedule-day > h4 { display: flex; flex-direction: column; gap: 5px; min-height: 53px; padding: 2px 3px 12px; font-size: 11px; font-weight: 600; }
+.schedule-day > h4 span { font-size: 10px; color: var(--schedule-green); }
+.schedule-day.is-today { background: var(--schedule-today); }
+.calendar-lesson { margin-bottom: 10px; padding: 12px 10px; border-radius: 7px; border-left: 3px solid #94b285; background: #edf3e8; overflow-wrap: anywhere; }
+.calendar-lesson.schedule-color-1 { background: #f0edf7; border-color: #ae9cc8; }
+.calendar-lesson.schedule-color-2 { background: #faf0e1; border-color: #cbaa71; }
+.calendar-time { font-size: 11px; font-weight: 650; margin-bottom: 8px; line-height: 1.7; font-variant-numeric: tabular-nums; }
+.calendar-lesson > strong { font-size: 12px; font-weight: 650; line-height: 1.6; }
+.calendar-topic { font-size: 11px; font-weight: 500; line-height: 1.8; margin: 8px 0; }
+.calendar-objectives { font-size: 10px; line-height: 1.8; margin-bottom: 9px; color: var(--schedule-muted); }
+.calendar-status { font-size: 10px; line-height: 1.8; color: var(--schedule-muted); }
+.calendar-live { display: inline-flex; padding: 3px 6px; border-radius: 4px; background: var(--schedule-paper); color: var(--schedule-green); font-size: 10px; margin-bottom: 6px; }
+.calendar-actions { display: flex; flex-wrap: wrap; gap: 4px 10px; border-top: 1px solid #48694422; padding-top: 7px; margin-top: 10px; }
+.calendar-actions button, .calendar-actions a { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: inherit; font-size: 10px; min-height: 30px; text-decoration: underline; text-underline-offset: 3px; }
+.calendar-actions svg, .schedule-footer svg { flex-shrink: 0; }
+.calendar-free { color: var(--schedule-muted); font-size: 10px; padding: 12px 3px 18px; }
+.calendar-add { width: 100%; border: 1px dashed var(--schedule-border); color: var(--schedule-muted); background: transparent; font-size: 10px !important; line-height: 1.8; padding: 11px 4px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 5px; }
+.calendar-add:hover:not(:disabled) { background: var(--schedule-soft); color: var(--schedule-green); }
+.schedule-day-list .schedule-day { padding: 18px 24px; border-top: 1px solid var(--schedule-border); border-right: 0; }
+.schedule-day-list .schedule-day > h4 { min-height: 0; }
+.schedule-day-list .calendar-lesson { padding: 16px; }
+.schedule-day-list .calendar-lesson > strong { font-size: 14px; }
+.schedule-day-list .calendar-time, .schedule-day-list .calendar-topic, .schedule-day-list .calendar-actions button, .schedule-day-list .calendar-actions a { font-size: 12px; }
+.schedule-day-list .calendar-objectives { font-size: 12px; }
+.schedule-footer { display: flex; align-items: center; gap: 9px; padding: 15px 24px; background: var(--schedule-soft); border-top: 1px solid var(--schedule-border); color: var(--schedule-muted); font-size: 11px; line-height: 1.7; }
+.schedule-list-count { font-size: 12px; padding-bottom: 10px; }
+.student-schedule-list { display: flex; flex-direction: column; gap: 12px; }
+.student-session-card { background: var(--schedule-paper); border: 1px solid var(--schedule-border); padding: 20px; border-radius: 14px; display: flex; flex-direction: column; gap: 12px; }
+.student-session-top, .student-session-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.student-session-top strong { font-size: 13px; font-weight: 600; }
+.student-session-class { color: var(--schedule-muted); font-size: 11px; }
+.student-session-card h3 { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.student-session-card > .learning-preserve { color: var(--schedule-muted); font-size: 12px; line-height: 1.8; }
+.schedule-badge { display: inline-flex; border-radius: 6px; padding: 5px 9px; font-size: 11px; background: #eaf3e6; color: #315e38; }
+.schedule-badge.is-done { background: var(--schedule-soft); color: var(--schedule-muted); }
+[data-theme='dark'] .learning-schedule { --schedule-ink: #dfebe3; --schedule-muted: #a5b7ac; --schedule-green: #9ac8ab; --schedule-border: #34483c; --schedule-paper: #18251f; --schedule-soft: #223229; --schedule-today: #23392b; }
+[data-theme='dark'] .learning-schedule input { color-scheme: dark; }
+[data-theme='dark'] .calendar-lesson { background: #2d4130; }
+[data-theme='dark'] .calendar-lesson.schedule-color-1 { background: #393347; }
+[data-theme='dark'] .calendar-lesson.schedule-color-2 { background: #433b2c; }
+[data-theme='dark'] .calendar-actions { border-color: #a5b7ac33; }
+[data-theme='dark'] .schedule-badge:not(.is-done) { color: #bde0c4; background: #2d4935; }
+@media (max-width: 1200px) {
+  .schedule-week { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .schedule-week .schedule-day { border-bottom: 1px solid var(--schedule-border); padding: 14px 12px; }
+  .schedule-week .schedule-day:nth-child(3n) { border-right: 0; }
+}
+@media (max-width: 700px) {
+  .schedule-week { grid-template-columns: 1fr; }
+  .schedule-week .schedule-day { border-right: 0; }
+  .schedule-day > h4 { flex-direction: row; justify-content: space-between; min-height: 0; font-size: 12px; }
+  .schedule-heading { padding: 18px 15px; gap: 10px; flex-wrap: wrap; }
+  .schedule-navigation { padding: 0 15px 18px; gap: 6px; }
+  .schedule-navigation input { max-width: 145px; }
+  .schedule-navigation .learning-secondary { padding: 9px; }
+  .schedule-day-list .schedule-day { padding: 16px 15px; }
+  .calendar-lesson { padding: 15px; }
+  .calendar-time, .calendar-lesson > strong { font-size: 13px; }
+  .calendar-topic, .calendar-objectives, .calendar-status, .calendar-actions button, .calendar-actions a { font-size: 12px; }
+  .calendar-actions button, .calendar-actions a { min-height: 38px; }
+  .calendar-add { min-height: 42px; }
+  .schedule-footer { padding: 14px 15px; align-items: flex-start; }
+  .student-session-card { padding: 16px; }
+}

@@ -3,8 +3,9 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { LaserPointer } from './LaserPointer';
 import { AnnotationCanvas } from './AnnotationCanvas';
+import { DocumentSurface } from './DocumentSurface';
 import { Loader2, AlertCircle } from 'lucide-react';
-import type { DrawTool, DrawStroke } from '../types/document';
+import type { AnnotationBasis, DrawTool, DrawStroke } from '../types/document';
 
 // Cấu hình worker cho pdfjs-dist
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -12,6 +13,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 interface PDFViewerProps {
   documentId: string;
   data: ArrayBuffer;
+  annotationBasis: AnnotationBasis;
   currentPage: number;
   zoom: number;
   rotation: number;
@@ -34,6 +36,7 @@ interface PDFViewerProps {
 export const PDFViewer: React.FC<PDFViewerProps> = ({
   documentId,
   data,
+  annotationBasis,
   currentPage,
   zoom,
   rotation,
@@ -56,6 +59,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [renderedKey, setRenderedKey] = useState('');
+  const renderKey = [currentPage, zoom, rotation, annotationBasis.zoom, annotationBasis.rotation].join(':');
   const [viewportDims, setViewportDims] = useState<{ width: number; height: number } | null>(null);
 
   const onDocumentLoaded = useEffectEvent((doc: pdfjsLib.PDFDocumentProxy) => {
@@ -110,9 +115,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         resizeObserver = new ResizeObserver(measure);
         resizeObserver.observe(container);
 
-        const viewport = page.getViewport({ scale: zoom, rotation });
+        const viewport = page.getViewport({ scale: annotationBasis.zoom, rotation: annotationBasis.rotation });
         setViewportDims({ width: viewport.width, height: viewport.height });
-        const pixelRatio = window.devicePixelRatio || 1;
+        const pixelRatio = Math.min(3, (window.devicePixelRatio || 1) * zoom / annotationBasis.zoom);
         canvas.width = Math.floor(viewport.width * pixelRatio);
         canvas.height = Math.floor(viewport.height * pixelRatio);
         canvas.style.width = `${viewport.width}px`;
@@ -122,6 +127,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
           transform: [pixelRatio, 0, 0, pixelRatio, 0, 0],
         });
         await renderTask.promise;
+        if (!cancelled) setRenderedKey(renderKey);
       } catch (error: unknown) {
         if (cancelled || (error instanceof Error && error.name === 'RenderingCancelledException')) return;
         setErrorMsg(error instanceof Error ? error.message : 'Không thể hiển thị trang PDF.');
@@ -133,7 +139,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       resizeObserver?.disconnect();
       renderTask?.cancel();
     };
-  }, [pdfDoc, currentPage, zoom, rotation, onFitWidthCalculated]);
+  }, [pdfDoc, currentPage, zoom, rotation, annotationBasis.zoom, annotationBasis.rotation, onFitWidthCalculated, renderKey]);
 
   // 3. Phím tắt chuyển trang nhanh cho giáo viên
   useEffect(() => {
@@ -193,23 +199,16 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       )}
 
       {/* Vùng hiển thị Canvas của PDF */}
-      <div
-        className={`canvas-wrapper-card ${isLaserActive ? 'is-laser-mode' : ''}`}
-        style={{
-          position: 'relative',
-          display: isLoading || errorMsg ? 'none' : 'inline-block',
-          boxShadow: 'var(--shadow-canvas)',
-          borderRadius: '6px',
-          backgroundColor: '#ffffff',
-          transition: 'box-shadow 0.2s ease',
-          margin: '0 auto',
-        }}
-      >
+      <DocumentSurface width={viewportDims?.width || 1} height={viewportDims?.height || 1}
+        scale={zoom / annotationBasis.zoom} rotation={rotation - annotationBasis.rotation} hidden={isLoading || !!errorMsg || renderedKey !== renderKey}>
         <canvas ref={canvasRef} style={{ display: 'block' }} />
 
         {/* Lớp vẽ Annotation & Hình học Toán học đè trực tiếp lên trang PDF */}
         {viewportDims && (
           <AnnotationCanvas
+            key={currentPage}
+            rotation={rotation - annotationBasis.rotation}
+            resolutionScale={zoom / annotationBasis.zoom}
             width={viewportDims.width}
             height={viewportDims.height}
             activeTool={activeDrawTool}
@@ -226,9 +225,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
         {/* Lớp Laser Pointer phủ đè lên canvas */}
         {viewportDims && (
-          <LaserPointer active={isLaserActive} containerRef={containerRef} />
+          <LaserPointer rotation={rotation - annotationBasis.rotation} active={isLaserActive} containerRef={containerRef} />
         )}
-      </div>
+      </DocumentSurface>
     </div>
   );
 };

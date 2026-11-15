@@ -1124,7 +1124,8 @@ body {
   flex-shrink: 0;
 }
 
-.sidebar-file-row:hover .sidebar-file-actions {
+.sidebar-file-row:hover .sidebar-file-actions,
+.sidebar-file-row:focus-within .sidebar-file-actions {
   display: flex;
 }
 
@@ -3340,3 +3341,30 @@ body {
   justify-content: space-between;
   gap: 12px;
 }
+
+.workspace-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--border-color); }
+.workspace-actions button { font-size: 12px; }
+.drive-upload-status { padding: 6px 12px; font-size: 12px; max-height: 160px; overflow: auto; }
+.drive-upload-status summary { cursor: pointer; }
+.drive-upload-status ul { list-style: none; padding: 0; margin: 6px 0; }
+.drive-upload-status li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; overflow-wrap: anywhere; }
+.document-surface { isolation: isolate; }
+.document-plane > img { display: block; max-width: none; }
+@media (max-width: 700px) { .workspace-actions { flex-wrap: nowrap; overflow-x: auto; flex-shrink: 0; } .workspace-actions button { white-space: nowrap; } }
+
+@media (pointer: coarse) { .sidebar-file-actions { display: flex; } }
+
+/* Keep drawing controls in normal flow so errors and save actions remain reachable. */
+.app-workspace-root > .math-drawing-floating-bar {
+  position: relative;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none;
+  align-self: center;
+  flex-shrink: 0;
+  max-width: calc(100% - 16px);
+  margin: 5px 8px;
+}
+.workspace-actions { border-color: var(--border-subtle); flex-shrink: 0; }
+.drive-upload-status { flex-shrink: 0; }

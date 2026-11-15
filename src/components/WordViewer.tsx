@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { renderAsync } from 'docx-preview';
 import { LaserPointer } from './LaserPointer';
 import { AnnotationCanvas } from './AnnotationCanvas';
+import { DocumentSurface } from './DocumentSurface';
 import { Loader2, AlertCircle } from 'lucide-react';
-import type { DrawTool, DrawStroke } from '../types/document';
+import type { AnnotationBasis, DrawTool, DrawStroke } from '../types/document';
 
 interface WordViewerProps {
   documentId: string;
   data: ArrayBuffer;
+  annotationBasis: AnnotationBasis;
   zoom: number;
   rotation: number;
   isLaserActive: boolean;
@@ -28,6 +30,7 @@ interface WordViewerProps {
 export const WordViewer: React.FC<WordViewerProps> = ({
   documentId: _documentId,
   data,
+  annotationBasis,
   zoom,
   rotation: _rotation,
   isLaserActive,
@@ -71,15 +74,12 @@ export const WordViewer: React.FC<WordViewerProps> = ({
   // Render file Word bằng docx-preview
   useEffect(() => {
     let isCancelled = false;
-    setIsLoading(true);
-    setErrorMsg(null);
 
     const renderWordDocument = async () => {
       try {
         if (!wordBodyRef.current) return;
-        wordBodyRef.current.innerHTML = '';
-
-        await renderAsync(data, wordBodyRef.current, undefined, {
+        const staging = document.createElement('div');
+        await renderAsync(data, staging, undefined, {
           inWrapper: false,
           ignoreWidth: false,
           ignoreHeight: false,
@@ -90,7 +90,8 @@ export const WordViewer: React.FC<WordViewerProps> = ({
           className: 'docx-preview-doc',
         });
 
-        if (!isCancelled) {
+        if (!isCancelled && wordBodyRef.current) {
+          wordBodyRef.current.replaceChildren(...staging.childNodes);
           setIsLoading(false);
           // Đợi DOM áp dụng style CSS và tính toán kích thước
           setTimeout(() => {
@@ -120,8 +121,10 @@ export const WordViewer: React.FC<WordViewerProps> = ({
     const handleResize = () => {
       updateDimensions();
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const observer = new ResizeObserver(handleResize);
+    if (containerRef.current) observer.observe(containerRef.current);
+    if (wordBodyRef.current) observer.observe(wordBodyRef.current);
+    return () => observer.disconnect();
   }, [updateDimensions]);
 
   return (
@@ -160,25 +163,16 @@ export const WordViewer: React.FC<WordViewerProps> = ({
       )}
 
       {/* Thẻ hiển thị nội dung Word */}
-      <div
-        className={`canvas-wrapper-card word-canvas-wrapper ${isLaserActive ? 'is-laser-mode' : ''}`}
-        style={{
-          position: 'relative',
-          display: isLoading || errorMsg ? 'none' : 'inline-block',
-          boxShadow: 'var(--shadow-canvas)',
-          borderRadius: '6px',
-          backgroundColor: '#ffffff',
-          transform: zoom !== 1 ? `scale(${zoom})` : undefined,
-          transformOrigin: 'top center',
-          transition: 'transform 0.15s ease',
-          margin: '0 auto',
-        }}
-      >
+      <DocumentSurface width={viewportDims?.width || 820} height={viewportDims?.height || 1160}
+        scale={zoom} rotation={0} hidden={isLoading || !!errorMsg}>
         <div ref={wordBodyRef} className="docx-render-target" />
 
         {/* Lớp vẽ Annotation & Hình học Toán học đè trực tiếp lên trang Word */}
         {viewportDims && (
           <AnnotationCanvas
+            key={'annotations'}
+            rotation={0}
+            resolutionScale={zoom / annotationBasis.zoom}
             width={viewportDims.width}
             height={viewportDims.height}
             activeTool={activeDrawTool}
@@ -197,7 +191,7 @@ export const WordViewer: React.FC<WordViewerProps> = ({
         {viewportDims && (
           <LaserPointer active={isLaserActive} />
         )}
-      </div>
+      </DocumentSurface>
     </div>
   );
 };

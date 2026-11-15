@@ -9,10 +9,10 @@ import {
   ChevronRight,
   Cloud,
 } from 'lucide-react';
-import type { DocumentItem } from '../types/document';
+import type { DocumentMetadata } from '../types/document';
 
 interface DocumentTabBarProps {
-  documents: DocumentItem[];
+  documents: DocumentMetadata[];
   activeId: string | null;
   onSelectDoc: (id: string) => void;
   onCloseDoc: (id: string, e: React.MouseEvent) => void;
